@@ -54,6 +54,23 @@ td.n,th.n{text-align:right}
 @media(max-width:600px){.two-col{grid-template-columns:1fr}}
 footer{color:var(--muted);font-size:.75rem;margin-top:20px;line-height:1.6}
 a{color:var(--accent)}
+/* interaction polish: cursors, hover feedback, chart tooltip */
+select{cursor:pointer}
+input[type=text],input[type=date],input[type=number]{cursor:text}
+button{transition:filter .12s,border-color .12s,transform .06s}
+button:not(:disabled):hover{filter:brightness(.97);border-color:var(--accent)}
+button.primary:not(:disabled):hover{filter:brightness(1.1)}
+button:not(:disabled):active{transform:translateY(1px)}
+.tab{transition:color .12s}
+.tab:hover{color:var(--ink)}
+details{border-radius:6px}
+details>summary{cursor:pointer;transition:background .1s}
+details>summary:hover{background:var(--track)}
+svg[data-charttip]{cursor:crosshair}
+.heat{cursor:help;transition:outline-color .08s;outline:1px solid transparent}
+.heat:hover{outline-color:var(--accent)}
+#tiptool{position:fixed;z-index:99;pointer-events:none;background:var(--ink);color:var(--bg);font-size:.75rem;line-height:1.45;padding:4px 9px;border-radius:5px;opacity:0;transition:opacity .08s;max-width:260px;white-space:pre-line;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+#tiptool.on{opacity:1}
 </style>
 </head>
 <body>
@@ -154,6 +171,30 @@ a{color:var(--accent)}
   const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
   const pct = v => v == null ? '—' : Number(v).toFixed(2) + '%';
   const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
+
+  // ---------- chart hover: one shared tooltip, index-snapped to the chart's x-axis ----------
+  const chartTipLabels = arr => esc(JSON.stringify(arr)); // put in a data-charttip attribute
+  const tipBox = () => {
+    let t = document.getElementById('tiptool');
+    if (!t) { t = document.createElement('div'); t.id = 'tiptool'; document.body.appendChild(t); }
+    return t;
+  };
+  document.addEventListener('mousemove', e => {
+    const svg = e.target && e.target.closest ? e.target.closest('svg[data-charttip]') : null;
+    const t = tipBox();
+    if (!svg) { if (t.classList.contains('on')) t.classList.remove('on'); return; }
+    let pts; try { pts = JSON.parse(svg.getAttribute('data-charttip')); } catch (err) { return; }
+    if (!Array.isArray(pts) || !pts.length) return;
+    const r = svg.getBoundingClientRect();
+    const i = Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / (r.width || 1) * (pts.length - 1))));
+    t.textContent = pts[i] || '';
+    t.classList.add('on');
+    const tr = t.getBoundingClientRect();
+    t.style.left = Math.max(4, Math.min(e.clientX + 14, window.innerWidth - tr.width - 8)) + 'px';
+    t.style.top = (e.clientY - tr.height - 12) + 'px';
+  }, { passive: true });
+  window.addEventListener('scroll', () => { const t = document.getElementById('tiptool'); if (t) t.classList.remove('on'); }, { passive: true });
+  document.addEventListener('mouseleave', () => { const t = document.getElementById('tiptool'); if (t) t.classList.remove('on'); });
 
   // ---------- Pre-lists: sector & industry ETF groups, as optgroups in a dropdown ----------
   const PRESETS = [
@@ -305,17 +346,17 @@ const sumF = a => a.reduce((t, x) => t + (x.f || 0), 0);
   const fmtD = d => String(d || '').slice(5) || '—';
   function flowChart(s) {
     const v = s.map(x => x.f), m = Math.max(...v.map(x => Math.abs(x || 0)), 1), w = 10, h = 80, n = v.length;
-    return `<svg viewBox="0 0 ${n * w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Daily net flow">` +
+    return `<svg viewBox="0 0 ${n * w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Daily net flow" data-charttip="${chartTipLabels(s.map(x => fmtD(x.d) + (x.f == null ? '\nnot measured' : '\n' + usd(x.f))))}">` +
       `<line x1="0" x2="${n * w}" y1="${h / 2}" y2="${h / 2}" stroke="var(--line)"/>` +
       v.map((x, i) => x == null
-        ? `<rect x="${i * w + 1}" width="${w - 2}" y="${h / 2 - 2}" height="4" fill="var(--muted)" opacity=".5"><title>${esc(s[i].d)}: not measured</title></rect>`
-        : `<rect x="${i * w + 1}" width="${w - 2}" y="${x >= 0 ? h / 2 - Math.abs(x) / m * (h / 2 - 2) : h / 2}" height="${Math.max(Math.abs(x) / m * (h / 2 - 2), x ? 1 : 0)}" fill="${x >= 0 ? 'var(--in)' : 'var(--out)'}"><title>${esc(s[i].d)}: ${usd(x)}</title></rect>`).join('') + '</svg>' +
+        ? `<rect x="${i * w + 1}" width="${w - 2}" y="${h / 2 - 2}" height="4" fill="var(--muted)" opacity=".5"></rect>`
+        : `<rect x="${i * w + 1}" width="${w - 2}" y="${x >= 0 ? h / 2 - Math.abs(x) / m * (h / 2 - 2) : h / 2}" height="${Math.max(Math.abs(x) / m * (h / 2 - 2), x ? 1 : 0)}" fill="${x >= 0 ? 'var(--in)' : 'var(--out)'}"></rect>`).join('') + '</svg>' +
       `<div class="msg" style="display:flex;justify-content:space-between"><span>${esc(fmtD(s[0] && s[0].d))}</span><span>scale ±${usd(m).slice(1)}</span><span>${esc(fmtD(s[n - 1] && s[n - 1].d))}</span></div>`;
   }
   function cumChart(s) {
     let c = 0; const pts = s.map(x => (c += x.f || 0)), lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), r = (hi - lo) || 1, w = 10, h = 80, n = pts.length;
     const y = v => 4 + (hi - v) / r * (h - 8);
-    return `<svg viewBox="0 0 ${n * w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Cumulative net flow"><line x1="0" x2="${n * w}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)"/><polyline fill="none" stroke="${pts[n - 1] >= 0 ? 'var(--in)' : 'var(--out)'}" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((v, i) => `${i * w + w / 2},${y(v)}`).join(' ')}"/></svg><div class="msg" style="text-align:center">cumulative: ${usd(pts[n - 1])}</div>`;
+    return `<svg viewBox="0 0 ${n * w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Cumulative net flow" data-charttip="${chartTipLabels(pts.map((cum, i) => fmtD(s[i] && s[i].d) + '\ncumulative ' + usd(cum)))}"><line x1="0" x2="${n * w}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)"/><polyline fill="none" stroke="${pts[n - 1] >= 0 ? 'var(--in)' : 'var(--out)'}" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((v, i) => `${i * w + w / 2},${y(v)}`).join(' ')}"/></svg><div class="msg" style="text-align:center">cumulative: ${usd(pts[n - 1])}</div>`;
   }
   // every ETF in series.json -> Map(ticker -> series), for market-wide rank and leaderboards
   function allSeries(c) {
@@ -604,12 +645,12 @@ let corrState = null;
     // growth of 100
     const gr = ok.map(t => { let e = 100; return [100, ...arr[t].map(x => (e *= 1 + (Number.isFinite(x) ? x : 0)))]; });
     const gmin = Math.min(...gr.flat()), gmax = Math.max(...gr.flat()), gw = 600, gh = 160, gy = v => 6 + (gmax - v) / ((gmax - gmin) || 1) * (gh - 12);
-    const growth = `<svg viewBox="0 0 ${gw} ${gh}" width="100%" height="${gh}" preserveAspectRatio="none" role="img" aria-label="Growth of 100">${gr.map((g, i) => `<polyline fill="none" stroke="${PAL[i % 10]}" stroke-width="1.8" vector-effect="non-scaling-stroke" points="${g.map((v, k) => `${(k / (g.length - 1) * gw).toFixed(1)},${gy(v).toFixed(1)}`).join(' ')}"/>`).join('')}</svg><div class="msg">${ok.map((t, i) => `<span style="color:${PAL[i % 10]}">■</span> ${esc(t)} ${gr[i][gr[i].length - 1].toFixed(0)}`).join(' &nbsp; ')} <span style="float:right">growth of 100 · range ${gmin.toFixed(0)}–${gmax.toFixed(0)}</span></div>`;
+    const growth = `<svg viewBox="0 0 ${gw} ${gh}" width="100%" height="${gh}" preserveAspectRatio="none" role="img" aria-label="Growth of 100" data-charttip="${chartTipLabels(gr[0].map((_, k) => `week ${k + 1} of ${win}\n` + ok.map((t, i) => `${t}  ${gr[i][k].toFixed(0)}`).join('\n'))) }">${gr.map((g, i) => `<polyline fill="none" stroke="${PAL[i % 10]}" stroke-width="1.8" vector-effect="non-scaling-stroke" points="${g.map((v, k) => `${(k / (g.length - 1) * gw).toFixed(1)},${gy(v).toFixed(1)}`).join(' ')}"/>`).join('')}</svg><div class="msg">${ok.map((t, i) => `<span style="color:${PAL[i % 10]}">■</span> ${esc(t)} ${gr[i][gr[i].length - 1].toFixed(0)}`).join(' &nbsp; ')} <span style="float:right">growth of 100 · range ${gmin.toFixed(0)}–${gmax.toFixed(0)}</span></div>`;
     // rolling 26-week correlation for the chosen pair
     const ra = arr[S.pa], rb = arr[S.pb], RW = 26, pts = [];
     for (let k = RW; k <= ra.length; k++) { const r = pearson(ra.slice(k - RW, k), rb.slice(k - RW, k)); pts.push(r); }
     const fp = pts.filter(Number.isFinite), rh = 120, rwid = 600, ry = v => 6 + (1 - v) / 2 * (rh - 12);
-    const rolling = fp.length < 5 ? '<p class="msg">Not enough overlapping weeks for a rolling view in this window (needs ≥ 26 + a few).</p>' : `<svg viewBox="0 0 ${rwid} ${rh}" width="100%" height="${rh}" preserveAspectRatio="none" role="img" aria-label="Rolling correlation"><line x1="0" x2="${rwid}" y1="${ry(0)}" y2="${ry(0)}" stroke="var(--line)"/><polyline fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((v, k) => Number.isFinite(v) ? `${(k / Math.max(pts.length - 1, 1) * rwid).toFixed(1)},${ry(v).toFixed(1)}` : '').filter(Boolean).join(' ')}"/></svg><div class="msg">26-week rolling correlation · latest <b>${f2(fp[fp.length - 1])}</b> · average ${f2(mean(fp))} · range ${f2(Math.min(...fp))} to ${f2(Math.max(...fp))}</div>`;
+    const rolling = fp.length < 5 ? '<p class="msg">Not enough overlapping weeks for a rolling view in this window (needs ≥ 26 + a few).</p>' : `<svg viewBox="0 0 ${rwid} ${rh}" width="100%" height="${rh}" preserveAspectRatio="none" role="img" aria-label="Rolling correlation" data-charttip="${chartTipLabels(pts.map((r, k) => `${S.pa} vs ${S.pb}\nweek +${k} · ${Number.isFinite(r) ? f2(r) : '—'}`))}"><line x1="0" x2="${rwid}" y1="${ry(0)}" y2="${ry(0)}" stroke="var(--line)"/><polyline fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((v, k) => Number.isFinite(v) ? `${(k / Math.max(pts.length - 1, 1) * rwid).toFixed(1)},${ry(v).toFixed(1)}` : '').filter(Boolean).join(' ')}"/></svg><div class="msg">26-week rolling correlation · latest <b>${f2(fp[fp.length - 1])}</b> · average ${f2(mean(fp))} · range ${f2(Math.min(...fp))} to ${f2(Math.max(...fp))}</div>`;
     const sel = (id, cur) => `<select id="${id}">${ok.map(t => `<option${t === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
     out.innerHTML = `${S.sk}
       <div class="row"><div><label>Window</label><select id="corrWin">${[[52, 'Last 52 weeks'], [104, 'Last 104 weeks'], [156, 'Last 156 weeks (all)']].map(([v, l]) => `<option value="${v}"${v === S.win ? ' selected' : ''}>${l}</option>`).join('')}</select></div><button id="corrCsv">Download CSV</button></div>
@@ -617,7 +658,7 @@ let corrState = null;
         ${pairs.length ? stat2('Most diversifying pair', f2(pairs[0][2]), esc(pairs[0][0] + ' / ' + pairs[0][1])) : ''}${pairs.length ? stat2('Most similar pair', f2(pairs[pairs.length - 1][2]), esc(pairs[pairs.length - 1][0] + ' / ' + pairs[pairs.length - 1][1])) : ''}${dr}
       </div>
       <div class="card"><header><h2>Weekly return correlation</h2><span class="meta">${win} weeks${S.weeksEnd ? ' to ' + esc(S.weeksEnd) : ''} · blue = together, red = opposite · pairs use weeks both funds have</span></header><div class="body"><table><thead><tr><th></th>${ok.map(t => `<th class="n">${esc(t)}</th>`).join('')}<th class="n">Avg vs others</th></tr></thead><tbody>
-        ${ok.map((t, i) => `<tr><th>${esc(t)}</th>${C[i].map(r => `<td>${heat(r)}</td>`).join('')}<td class="n"><b>${Number.isFinite(avg[i]) ? f2(avg[i]) : '—'}</b></td></tr>`).join('')}</tbody></table><p class="msg">Lower "Avg vs others" = better diversifier within this set. Correlation describes weekly co-movement, not holdings overlap, and changes across regimes.</p></div></div>
+        ${ok.map((t, i) => `<tr><th>${esc(t)}</th>${C[i].map((r, j) => `<td title="${esc(ok[i] + ' vs ' + (ok[j] != null ? ok[j] : ok[i]) + (i === j ? ' (self)' : '') + ': ' + (Number.isFinite(r) ? f2(r) : 'n/a'))}">${heat(r)}</td>`).join('')}<td class="n"><b>${Number.isFinite(avg[i]) ? f2(avg[i]) : '—'}</b></td></tr>`).join('')}</tbody></table><p class="msg">Lower "Avg vs others" = better diversifier within this set. Correlation describes weekly co-movement, not holdings overlap, and changes across regimes.</p></div></div>
       <div class="card"><header><h2>Return &amp; risk</h2><span class="meta">same window · from weekly total returns</span></header><div class="body"><table><thead><tr><th>ETF</th><th class="n">Total return</th><th class="n">Annualised</th><th class="n">Volatility</th><th class="n">Return / vol</th><th class="n">Best week</th><th class="n">Worst week</th><th class="n">Max drawdown</th><th class="n">Weeks</th></tr></thead><tbody>
         ${stats.map(x => `<tr><td><b>${esc(x.t)}</b></td><td class="n ${cl(x.tot)}">${x.tot.toFixed(1)}%</td><td class="n ${cl(x.ann)}">${x.ann.toFixed(1)}%</td><td class="n">${x.vol.toFixed(1)}%</td><td class="n">${(x.ann / x.vol).toFixed(2)}</td><td class="n in">${x.best.toFixed(1)}%</td><td class="n out">${x.worst.toFixed(1)}%</td><td class="n out">${x.dd.toFixed(1)}%</td><td class="n">${x.n}</td></tr>`).join('')}</tbody></table><p class="msg">Past weekly returns only — not a forecast. Max drawdown is measured on weekly closes, so intra-week falls are missed.</p></div></div>
       <div class="grid2"><div class="card"><header><h2>Growth of 100</h2></header><div class="body">${growth}</div></div>
