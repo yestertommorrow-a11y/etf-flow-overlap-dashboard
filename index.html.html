@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETF Flow & Overlap Dashboard</title>
+<style>
+:root{--bg:#f6f7f9;--surface:#fff;--ink:#14213d;--muted:#5b6578;--line:#dde1e8;--accent:#1f4fd8;--in:#0f7b5f;--out:#b3261e;--mv:#9a6200;--track:#e3e7ee;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1420;--surface:#171e2e;--ink:#e8ecf5;--muted:#9aa5ba;--line:#283149;--accent:#7aa2ff;--in:#4fd1a5;--out:#ff8a80;--mv:#f0b44c;--track:#283149;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1120px;margin:0 auto;padding:20px 14px 60px}
+h1{font-size:1.45rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 18px;font-size:.88rem}
+.tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:0}
+.tab{padding:8px 16px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:.88rem}
+.tab.active{background:var(--surface);border-color:var(--line);border-bottom-color:var(--surface);color:var(--ink);font-weight:600;margin-bottom:-1px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:3px}
+input[type=text],input[type=date],input[type=number],select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 10px}
+input[type=text]{width:110px;text-transform:uppercase}
+input[type=text].wide{width:220px}
+select{min-width:120px}
+button{font:inherit;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;cursor:pointer;font-size:.88rem}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bar{height:10px;background:var(--track);border-radius:5px;overflow:hidden}
+.bar>div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.msg{color:var(--muted);font-size:.85rem}
+.err{color:var(--out)}
+.in{color:var(--in)}.out{color:var(--out)}.mv{color:var(--mv)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:12px;overflow:hidden}
+.card>header{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);font-size:.88rem}
+.card h2{font-size:1rem;margin:0}
+.card .meta{color:var(--muted);font-size:.78rem}
+.body{padding:12px 14px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.85rem}
+th,td{text-align:left;padding:5px 10px 5px 0;white-space:nowrap}
+th{color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);font-size:.78rem}
+td.n,th.n{text-align:right}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}}
+.overlap-big{font-size:2.2rem;font-weight:700;color:var(--accent);line-height:1.1}
+.overlap-label{font-size:.78rem;color:var(--muted)}
+.sector-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.sector-name{width:140px;font-size:.8rem;color:var(--muted);flex-shrink:0;text-align:right}
+.sector-bars{flex:1;display:flex;flex-direction:column;gap:2px}
+.sector-bar{height:9px;border-radius:3px;min-width:2px}
+.sector-val{width:52px;font-size:.75rem;text-align:right;font-variant-numeric:tabular-nums}
+.heat{display:inline-block;width:100%;padding:6px 4px;text-align:center;border-radius:4px;font-size:.78rem;font-variant-numeric:tabular-nums}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.two-col{grid-template-columns:1fr}}
+footer{color:var(--muted);font-size:.75rem;margin-top:20px;line-height:1.6}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>ETF Flow &amp; Overlap Dashboard</h1>
+<p class="sub">Fund flows · 1-vs-1 overlap · sector weights · correlation · holdings change — all from free TickerInside data. <a href="#tab-funds" data-goto="funds">Browse every fund of any issuer</a> · Invesco funds get holdings from SEC Form N-PORT and weight changes from quarterly reports.</p>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="flows" role="tab">Fund Flows</button>
+  <button class="tab" data-tab="overlap" role="tab">1-vs-1 Overlap</button>
+  <button class="tab" data-tab="sectors" role="tab">Sector Weights</button>
+  <button class="tab" data-tab="corr" role="tab">Correlation</button>
+  <button class="tab" data-tab="change" role="tab">Holdings Change</button>
+  <button class="tab" data-tab="funds" role="tab">Fund Browser</button>
+</nav>
+
+<!-- ========== TAB: FLOWS ========== -->
+<section id="tab-flows" class="panel">
+  <div class="row">
+    <div><label for="flowTickers">Tickers (comma separated)</label><input type="text" id="flowTickers" class="wide" value="SPY, XLP, XLY, TLT" placeholder="SPY, XLP, XLY, TLT"></div>
+    <div><label>Pre-list (append ticker or whole group ≤12)</label><select id="preset-flow" data-for="flowTickers" data-cap="12"></select></div>
+    <div><label for="flowPeriod">Period</label><select id="flowPeriod"><option value="1">Latest close</option><option value="5" selected>5 closes</option><option value="10">10 closes</option><option value="20">20 closes</option></select></div>
+    <button id="flowRun" class="primary">Load flows</button>
+  </div>
+  <p class="msg" style="margin:-6px 0 12px;color:var(--mv)">⚠ Upfront: <b>no flow series for Invesco-related funds</b> — flows exist only for ETFs read daily from iShares, SPDR or Global X files (etc. QQQ is Invesco, so it has none). SEC-filed funds (Invesco, Vanguard…) publish nothing daily. For those use the Holdings Change tab, where Invesco works from quarterly SEC reports.</p>
+  <div id="flowOut"></div>
+</section>
+
+<!-- ========== TAB: OVERLAP ========== -->
+<section id="tab-overlap" class="panel" hidden>
+  <div class="row">
+    <div><label for="ovA">ETF A</label><input type="text" id="ovA" value="XLP" placeholder="XLP"></div>
+    <div><label for="ovB">ETF B</label><input type="text" id="ovB" value="XLY" placeholder="XLY"></div>
+    <button id="ovRun" class="primary">Compare overlap</button>
+  </div>
+  <div id="ovOut"></div>
+</section>
+
+<!-- ========== TAB: SECTORS ========== -->
+<section id="tab-sectors" class="panel" hidden>
+  <div class="row">
+    <div><label for="secA">ETF A</label><input type="text" id="secA" value="XLP"></div>
+    <div><label for="secB">ETF B</label><input type="text" id="secB" value="XLY"></div>
+    <div><label>Pre-list (A ← ticker · group → A &amp; B)</label><select id="preset-secs" data-kind="ab"></select></div>
+    <button id="secRun" class="primary">Compare sectors</button>
+  </div>
+  <div id="secOut"></div>
+</section>
+
+<!-- ========== TAB: CORRELATION ========== -->
+<section id="tab-corr" class="panel" hidden>
+  <div class="row">
+    <div><label for="corrTickers">Tickers (2–10, comma separated)</label><input type="text" id="corrTickers" class="wide" placeholder="SPY, QQQ, XLP, XLY, TLT"></div>
+    <div><label>Pre-list (append ticker or whole group ≤10)</label><select id="preset-corr" data-for="corrTickers" data-cap="10"></select></div>
+    <button id="corrRun" class="primary">Compute correlation</button>
+  </div>
+  <div id="corrOut"></div>
+</section>
+
+<!-- ========== TAB: HOLDINGS CHANGE (original) ========== -->
+<section id="tab-change" class="panel" hidden>
+  <div class="row">
+    <div><label for="chgTickers">Tickers (comma separated)</label><input type="text" id="chgTickers" class="wide" placeholder="SPY, QQQ, XLP"></div>
+    <div><label>Pre-list (append ticker or whole group ≤10)</label><select id="preset-chg" data-for="chgTickers" data-cap="10"></select></div>
+    <div><label for="chgPeriod">Period</label><select id="chgPeriod"><option value="latest">Latest file</option><option value="week">Last 7 days (net)</option><option value="month">Last 30 days (net)</option></select></div>
+    <div><label for="chgThr">Min weight move (%)</label><input type="number" id="chgThr" min="0.05" step="0.01" value="0.05" style="width:90px"></div>
+    <button id="chgRun" class="primary">Track changes</button>
+  </div>
+  <div id="chgOut"></div>
+</section>
+
+<!-- ========== TAB: FUND BROWSER (issuer screen) ========== -->
+<section id="tab-funds" class="panel" hidden>
+  <div class="row">
+    <div><label for="fbIssuer">Issuer</label><input type="text" id="fbIssuer" value="Invesco" style="width:140px;text-transform:none"></div>
+    <div><label for="fbSearch">Search name or ticker</label><input type="text" id="fbSearch" style="width:220px;text-transform:none"></div>
+    <div><label for="fbSort">Sort</label><select id="fbSort"><option value="aum">Largest first (assets)</option><option value="er">Lowest cost</option><option value="ticker">Ticker</option></select></div>
+    <button id="fbRun" class="primary">Browse funds</button>
+  </div>
+  <p class="msg">Filters the covered universe server-side (<code>/screen</code>, no key), so any issuer works — type <i>iShares</i>, <i>Vanguard</i>, <i>SPDR</i>, <i>Global X</i>… Pick buttons fill the other tabs: <b>A</b>/<b>B</b> set the compare tabs, <b>＋</b> appends to Correlation and Holdings Change.</p>
+  <div id="fbOut"></div>
+</section>
+
+<footer>
+  Data: <a href="https://tickerinside.com" target="_blank" rel="noopener">TickerInside</a> (CC BY 4.0), issuer holdings history and SEC Form N-PORT filings.
+  Overlap = <code>Σ min(wᵢᴀ, wᵢʙ)</code> over shared holdings. Flows = net creations/redemptions measured from daily issuer files (ETFs read daily only).
+  Holdings history and flows exist only for ETFs read daily from issuer files; other funds (Invesco, Vanguard…) get holdings from SEC filings and weight changes from quarterly reports instead.
+  Not investment advice.
+</footer>
+</main>
+
+<script>
+(() => {
+  // ---------- config ----------
+  const BASE = 'https://tickerinside.com/api/v1/';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const pct = v => v == null ? '—' : Number(v).toFixed(2) + '%';
+  const TICKER_RE = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
+
+  // ---------- Pre-lists: sector & industry ETF groups, as optgroups in a dropdown ----------
+  const PRESETS = [
+    ['SPDR sectors', [
+      ['XLK', 'XLK – Technology'], ['XLF', 'XLF – Financials'], ['XLV', 'XLV – Health Care'],
+      ['XLE', 'XLE – Energy'], ['XLI', 'XLI – Industrials'], ['XLU', 'XLU – Utilities'],
+      ['XLY', 'XLY – Consumer Discretionary'], ['XLC', 'XLC – Communication Services'],
+      ['XLP', 'XLP – Consumer Staples'], ['XLB', 'XLB – Materials'], ['XLRE', 'XLRE – Real Estate']]],
+    ['Vanguard sectors (have stocks)', [
+      ['VGT', 'VGT – Information Technology (largest of the group)'], ['VHT', 'VHT – Health Care'],
+      ['VFH', 'VFH – Financials'], ['VDE', 'VDE – Energy'], ['VIS', 'VIS – Industrials'],
+      ['VPU', 'VPU – Utilities'], ['VCR', 'VCR – Consumer Discretionary'], ['VDC', 'VDC – Consumer Staples'],
+      ['VOX', 'VOX – Communication Services'], ['VAW', 'VAW – Materials'], ['VNQ', 'VNQ – Real Estate']]],
+    ['Invesco equal-weight sectors', [
+      ['RSPT', 'RSPT – Technology'], ['RSPF', 'RSPF – Financials'], ['RSPH', 'RSPH – Health Care'],
+      ['RSPG', 'RSPG – Energy'], ['RSPN', 'RSPN – Industrials'], ['RSPC', 'RSPC – Communication Services'],
+      ['RSPD', 'RSPD – Consumer Discretionary'], ['RSPS', 'RSPS – Consumer Staples'],
+      ['RSPM', 'RSPM – Materials'], ['RSPR', 'RSPR – Real Estate'], ['RSPU', 'RSPU – Utilities']]],
+    ['iShares US sectors', [
+      ['IYW', 'IYW – U.S. Technology'], ['IYH', 'IYH – U.S. Healthcare'], ['IYF', 'IYF – U.S. Financials'],
+      ['IYE', 'IYE – U.S. Energy'], ['IYJ', 'IYJ – U.S. Industrials'], ['IDU', 'IDU – U.S. Utilities'],
+      ['IYC', 'IYC – U.S. Consumer Discretionary'], ['IYK', 'IYK – U.S. Consumer Staples'],
+      ['IYM', 'IYM – U.S. Basic Materials'], ['IYR', 'IYR – U.S. Real Estate'], ['IYZ', 'IYZ – U.S. Telecom/Comms']]],
+    ['SPDR industry & Madrid variants (deep industry)', [
+      ['XLKM', 'XLKM – Technology'], ['XLYM', 'XLYM – Consumer Discretionary'], ['XLPM', 'XLPM – Consumer Staples'],
+      ['XLEM', 'XLEM – Energy'], ['XOP', 'XOP – Oil & Gas Exploration & Production'],
+      ['XHB', 'XHB – Homebuilders'], ['XME', 'XME – Metals & Mining'], ['XRT', 'XRT – Retail'],
+      ['XBI', 'XBI – Biotech'], ['KBE', 'KBE – Banks'], ['KRE', 'KRE – Regional Banks'],
+      ['XLKI', 'XLKI – Communication Services'], ['XLFI', 'XLFI – Financials'], ['XLVI', 'XLVI – Utilities']]],
+    ['iShares/global industry', [
+      ['IBB', 'IBB – Biotechnology'], ['SOXX', 'SOXX – Semiconductors'], ['IGV', 'IGV – Expanded Tech-Software'],
+      ['IHI', 'IHI – Medical Devices'], ['ITA', 'ITA – Aerospace & Defense'], ['ITB', 'ITB – Home Construction'],
+      ['IEO', 'IEO – Oil & Gas Exploration'], ['IEZ', 'IEZ – Oil Equipment'], ['IXN', 'IXN – Global Tech'],
+      ['IXJ', 'IXJ – Global Healthcare'], ['IXG', 'IXG – Global Financials'], ['IFRA', 'IFRA – U.S. Infrastructure']]],
+  ];
+  function applyPreset(sel) {
+    const v = sel.value; if (!v) return;
+    const kind = sel.dataset.kind, cap = Number(sel.dataset.cap || 12);
+    if (v.startsWith('__group:')) {
+      const list = PRESETS[+v.slice(8)][1];
+      if (kind === 'ab') { $('secA').value = list[0][0]; $('secB').value = (list[1] || list[0])[0]; return; }
+      fromPresetList(sel.dataset.for, list.map(x => x[0]), cap);
+    } else if (kind === 'ab') $('secA').value = v;
+    else fromPresetList(sel.dataset.for, [v], cap);
+  }
+  function fromPresetList(id, add, cap) {
+    const inp = $(id);
+    const s = new Set(inp.value.split(/[\s,;]+/).map(x => x.trim().toUpperCase()).filter(Boolean));
+    for (const t of add) { s.add(t); if (s.size >= cap) break; }
+    inp.value = [...s].slice(0, cap).join(', ');
+  }
+  function presetList(sel) {
+    sel.innerHTML = '<option value="">Pre-list…</option>' + PRESETS.map(([g, items], i) =>
+      `<optgroup label="${esc(g)}">` +
+      items.map(([t, l]) => `<option value="${t}">${esc(l)}</option>`).join('') +
+      `<option value="__group:${i}">— all of this group (${items.length}) —</option>` +
+      '</optgroup>').join('');
+    sel.onchange = () => { applyPreset(sel); sel.value = ''; };
+  }
+  document.querySelectorAll('select[id^="preset-"]').forEach(presetList);
+
+  // ---------- tab switching ----------
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('[id^="tab-"]').forEach(p => p.hidden = true);
+      btn.classList.add('active');
+      $('tab-' + btn.dataset.tab).hidden = false;
+    };
+  });
+
+  // ---------- generic fetch with timeout ----------
+  async function getJSON(url, ms = 12000) {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    try {
+      const r = await fetch(url, { signal: c.signal, headers: { Accept: 'application/json' } });
+      if (r.status === 404) return { _404: true };
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally { clearTimeout(t); }
+  }
+
+  // ---------- shared: load fund history ----------
+  async function fundData(ticker, ep = 'fund') {
+    const t = ticker.trim().toUpperCase();
+    if (!TICKER_RE.test(t)) throw new Error('Invalid ticker: ' + t);
+    const d = await getJSON(BASE + ep + '/' + encodeURIComponent(t.toLowerCase()) + '.json');
+    if (d._404) throw new Error('No data for ' + t);
+    return { ticker: t, data: d };
+  }
+
+  // ---------- shared: load several funds in one request (/batch), per-fund fallback ----------
+  async function fetchMany(tickers) {
+    const tks = [...new Set(tickers.map(t => String(t).trim().toUpperCase()).filter(Boolean))];
+    const map = new Map();
+    if (tks.length > 1) {
+      try {
+        const d = await getJSON(BASE + 'batch?funds=' + tks.map(encodeURIComponent).join(','), 30000);
+        if (!d._404 && d.funds && typeof d.funds === 'object') {
+          for (const t of tks) { const f = d.funds[t] || d.funds[t.toLowerCase()] || d.funds[t.toUpperCase()]; if (f && typeof f === 'object') map.set(t, f); }
+        }
+      } catch (e) { /* falls back to one request per fund below */ }
+    }
+    const need = tks.filter(t => !map.has(t));
+    const r = await Promise.allSettled(need.map(t => fundData(t)));
+    r.forEach((x, i) => { if (x.status === 'fulfilled') map.set(need[i], x.value.data); });
+    return map;
+  }
+
+  // ============================================================
+  // MODULE 1: FUND FLOWS (net creations/redemptions per close)
+  // ============================================================
+  const usd = v => v == null ? '—' : (v < 0 ? '-' : '+') + '$' + (Math.abs(v) >= 1e9 ? (Math.abs(v)/1e9).toFixed(2) + 'B' : (Math.abs(v)/1e6).toFixed(1) + 'M');
+  let seriesCache = null;
+  function normSeries(x, dates) {
+    if (!x) return [];
+    if (!Array.isArray(x)) x = x.series || x.flows || x.values || x.daily || [];
+    return x.map((r, i) => {
+      if (typeof r === 'number') return { d: dates ? dates[i] : i, f: r, p: null };
+      if (Array.isArray(r)) return { d: r[0], f: r[1], p: r[2] ?? null };
+      if (r && typeof r === 'object') return { d: r.close || r.date, f: r.flow_usd ?? r.flow ?? r.usd ?? null, p: r.flow_pct_of_assets ?? null, pc: r.previous_close ?? null, g: r.growth_pct ?? null };
+      return { d: i, f: null, p: null };
+    }).filter(r => r.f == null || Number.isFinite(Number(r.f))).map(r => ({ ...r, f: r.f == null ? null : Number(r.f) }));
+  }
+  function findNode(o, t, depth = 0) {
+    if (!o || typeof o !== 'object' || depth > 4) return null;
+    const lt = t.toLowerCase();
+    if (Array.isArray(o)) {
+      const hit = o.find(e => e && typeof e === 'object' && !Array.isArray(e) && [e.ticker, e.t, e.fund, e.symbol].some(v => String(v || '').toUpperCase() === t));
+      if (hit) return hit;
+      for (const e of o) { if (e && typeof e === 'object') { const r = findNode(e, t, depth + 1); if (r) return r; } }
+      return null;
+    }
+    if (o[t] != null) return o[t];
+    if (o[lt] != null) return o[lt];
+    for (const k of Object.keys(o)) { const r = findNode(o[k], t, depth + 1); if (r) return r; }
+    return null;
+  }
+  async function getFlowSeries(t) {
+    if (!seriesCache) { seriesCache = await getJSON(BASE + 'etf-flows/series.json', 30000); if (seriesCache._404) throw new Error('etf-flows/series.json not found'); }
+    const c = seriesCache;
+    const dates = c.closes || c.dates || c.days || null;
+    const s = normSeries(findNode(c, t), Array.isArray(dates) ? dates : null);
+    if (!s.length) throw new Error('no flow series for ' + t + ' — flows exist only for ETFs read daily from iShares, SPDR or Global X files (QQQ is Invesco, so it has none). File keys: ' + Object.keys(c).slice(0, 8).join(', '));
+    return s;
+  }
+const sumF = a => a.reduce((t, x) => t + (x.f || 0), 0);
+  const fmtD = d => String(d || '').slice(5) || '—';
+  function flowChart(s) {
+    const v = s.map(x => x.f), m = Math.max(...v.map(x => Math.abs(x || 0)), 1), w = 10, h = 80, n = v.length;
+    return `<svg viewBox="0 0 ${n * w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Daily net flow">` +
+      `<line x1="0" x2="${n * w}" y1="${h / 2}" y2="${h / 2}" stroke="var(--line)"/>` +
+      v.map((x, i) => x == null
+        ? `<rect x="${i * w + 1}" width="${w - 2}" y="${h / 2 - 2}" height="4" fill="var(--muted)" opacity=".5"><title>${esc(s[i].d)}: not measured</title></rect>`
+        : `<rect x="${i * w + 1}" width="${w - 2}" y="${x >= 0 ? h / 2 - Math.abs(x) / m * (h / 2 - 2) : h / 2}" height="${Math.max(Math.abs(x) / m * (h / 2 - 2), x ? 1 : 0)}" fill="${x >= 0 ? 'var(--in)' : 'var(--out)'}"><title>${esc(s[i].d)}: ${usd(x)}</title></rect>`).join('') + '</svg>' +
+      `<div class="msg" style="display:flex;justify-content:space-between"><span>${esc(fmtD(s[0] && s[0].d))}</span><span>scale ±${usd(m).slice(1)}</span><span>${esc(fmtD(s[n - 1] && s[n - 1].d))}</span></div>`;
+  }
+  function cumChart(s) {
+    let c = 0; const pts = s.map(x => (c += x.f || 0)), lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), r = (hi - lo) || 1, w = 10, h = 80, n = pts.length;
+    const y = v => 4 + (hi - v) / r * (h - 8);
+    return `<svg viewBox="0 0 ${n * w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Cumulative net flow"><line x1="0" x2="${n * w}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)"/><polyline fill="none" stroke="${pts[n - 1] >= 0 ? 'var(--in)' : 'var(--out)'}" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((v, i) => `${i * w + w / 2},${y(v)}`).join(' ')}"/></svg><div class="msg" style="text-align:center">cumulative: ${usd(pts[n - 1])}</div>`;
+  }
+  // every ETF in series.json -> Map(ticker -> series), for market-wide rank and leaderboards
+  function allSeries(c) {
+    const dates = Array.isArray(c.closes || c.dates || c.days) ? (c.closes || c.dates || c.days) : null, m = new Map();
+    for (const cont of [c.etfs, c.funds, c.series, c.data, c]) {
+      if (!cont || typeof cont !== 'object') continue;
+      const ent = Array.isArray(cont) ? cont.filter(e => e && e.ticker).map(e => [String(e.ticker).toUpperCase(), e]) : Object.entries(cont).filter(([k, v]) => /^[A-Za-z0-9.\-]{1,6}$/.test(k) && v && typeof v === 'object').map(([k, v]) => [k.toUpperCase(), v]);
+      for (const [k, v] of ent) { const sr = normSeries(v, dates); if (sr.length >= 3 && sr.some(x => x.f != null)) m.set(k, sr); }
+      if (m.size > 5) break;
+    }
+    return m;
+  }
+  function flowCsv(ok) {
+    const rows = ['ticker,close,previous_close,flow_usd,flow_pct_of_assets,growth_pct'];
+    ok.forEach(o => o.s.forEach(x => rows.push([o.t, x.d, x.pc ?? '', x.f ?? '', x.p ?? '', x.g ?? ''].join(','))));
+    return rows.join('\n');
+  }
+  async function runFlows() {
+    const tickers = [...new Set($('flowTickers').value.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 12);
+    const n = Number($('flowPeriod').value), out = $('flowOut');
+    if (!tickers.length) { out.innerHTML = '<p class="msg">Enter at least one ticker.</p>'; return; }
+    out.innerHTML = '<p class="msg">Loading flows…</p>';
+    const res = await Promise.allSettled(tickers.map(async t => ({ t, s: await getFlowSeries(t) })));
+    const ok = [], bad = [];
+    res.forEach((r, i) => r.status === 'fulfilled' ? ok.push(r.value) : bad.push(`<p class="err">${esc(tickers[i])}: ${esc(r.reason.message)}</p>`));
+    let market = new Map(); try { market = allSeries(seriesCache); } catch (e) {}
+    const tot = new Map(); market.forEach((sr, t) => tot.set(t, sumF(sr.slice(-n))));
+    const ranked = [...tot].sort((a, b) => b[1] - a[1]);
+    let html = '';
+    const rows = ok.map(o => { const w = o.s.slice(-n); return { ...o, w, tot: sumF(w), meas: w.filter(x => x.f != null).length, pctA: w.reduce((a, x) => a + (x.p || 0), 0) }; }).sort((a, b) => b.tot - a.tot);
+    if (rows.length) {
+      html += `<div class="card"><header><h2>Net flow ranking</h2><span class="meta">last ${n} close(s) · creations − redemptions</span></header><div class="body"><table><thead><tr><th>ETF</th><th class="n">Net flow</th><th class="n">≈ % of assets</th><th class="n">Latest close</th><th class="n">Measured</th><th class="n">Market rank</th><th style="width:34%">Daily flows</th></tr></thead><tbody>` +
+        rows.map(o => { const l = o.w[o.w.length - 1] || {}, rk = ranked.findIndex(x => x[0] === o.t); return `<tr><td><b>${esc(o.t)}</b></td><td class="n ${o.tot >= 0 ? 'in' : 'out'}">${usd(o.tot)}</td><td class="n ${o.pctA >= 0 ? 'in' : 'out'}">${o.pctA.toFixed(2)}%</td><td class="n ${l.f >= 0 ? 'in' : 'out'}">${usd(l.f)}</td><td class="n">${o.meas}/${o.w.length}</td><td class="n">${rk < 0 ? '—' : '#' + (rk + 1) + ' / ' + ranked.length}</td><td>${flowChart(o.w)}</td></tr>`; }).join('') +
+        `</tbody></table><p class="msg">≈ % of assets adds each day's flow ÷ that day's net assets, so it is approximate. Unmeasured closes (rebalance days where the two measures disagree) are shown as grey ticks and left out of sums.</p></div></div>`;
+      for (const o of rows) {
+        const w = o.w, pos = w.filter(x => (x.f || 0) > 0), neg = w.filter(x => (x.f || 0) < 0);
+        const best = pos.reduce((a, x) => !a || x.f > a.f ? x : a, null), worst = neg.reduce((a, x) => !a || x.f < a.f ? x : a, null);
+        let streak = 0; const sign = Math.sign((w.filter(x => x.f != null).slice(-1)[0] || {}).f || 0);
+        for (let i = w.length - 1; i >= 0; i--) { if (w[i].f == null) continue; if (Math.sign(w[i].f) === sign && sign) streak++; else break; }
+        const five = sumF(w.slice(-5)), k = (l, v, c = '') => `<div><div class="overlap-label">${l}</div><div class="${c}" style="font-weight:700">${v}</div></div>`;
+        html += `<div class="card"><header><h2>${esc(o.t)}</h2><span class="meta">${esc(w[0] && w[0].d)} → ${esc(w[w.length - 1] && w[w.length - 1].d)}</span></header><div class="body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:12px">
+            ${k('Net flow', usd(o.tot), o.tot >= 0 ? 'in' : 'out')}${k('Gross inflows', usd(sumF(pos)), 'in')}${k('Gross outflows', usd(sumF(neg)), 'out')}
+            ${k('Inflow / outflow days', pos.length + ' / ' + neg.length)}${k('Last 5 closes', usd(five), five >= 0 ? 'in' : 'out')}
+            ${k('Biggest inflow', best ? usd(best.f) + ' · ' + fmtD(best.d) : '—', 'in')}${k('Biggest outflow', worst ? usd(worst.f) + ' · ' + fmtD(worst.d) : '—', 'out')}
+            ${k('Current streak', streak ? streak + (sign > 0 ? ' inflow' : ' outflow') + ' day(s)' : '—')}
+          </div>
+          <div class="grid2"><div>${flowChart(w)}</div><div>${cumChart(w)}</div></div>
+          <details style="margin-top:10px"><summary class="msg" style="cursor:pointer">Daily detail</summary><table><thead><tr><th>Close</th><th class="n">Net flow</th><th class="n">% of assets</th><th class="n">Asset growth</th><th>Note</th></tr></thead><tbody>
+          ${w.slice().reverse().map((x, i, a) => { const prev = a[i + 1]; const gap = prev && x.pc && prev.d && x.pc !== prev.d; return `<tr><td>${esc(x.d)}</td><td class="n ${x.f >= 0 ? 'in' : 'out'}">${usd(x.f)}</td><td class="n">${x.p == null ? '—' : pct(x.p)}</td><td class="n">${x.g == null ? '—' : pct(x.g)}</td><td class="msg">${x.f == null ? 'not measured' : gap ? 'spans several closes (file missing)' : ''}</td></tr>`; }).join('')}
+          </tbody></table></details></div></div>`;
+      }
+      if (ranked.length > 10) {
+        const lst = (arr, c) => `<table><tbody>${arr.map(([t, v]) => `<tr><td><b>${esc(t)}</b></td><td class="n ${c}">${usd(v)}</td></tr>`).join('')}</tbody></table>`;
+        html += `<div class="card"><header><h2>Market context</h2><span class="meta">all ${ranked.length} ETFs measured · last ${n} close(s)</span></header><div class="body"><div class="grid2"><div><div class="overlap-label">Largest inflows</div>${lst(ranked.slice(0, 8), 'in')}</div><div><div class="overlap-label">Largest outflows</div>${lst(ranked.slice(-8).reverse(), 'out')}</div></div></div></div>`;
+      }
+      html += '<p><button id="flowCsv">Download daily flows (CSV)</button></p>';
+    }
+    out.innerHTML = html + bad.join('') || '<p class="msg">No flow data returned.</p>';
+    const b = $('flowCsv'); if (b) b.onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([flowCsv(ok)], { type: 'text/csv' })); a.download = 'etf_flows.csv'; a.click(); };
+  }
+
+  // ============================================================
+  // MODULE 2: 1-vs-1 OVERLAP (+ sector breakdown of the overlap)
+  // ============================================================
+const secCache = new Map();
+async function getInfo(t) {
+    if (secCache.has(t)) return secCache.get(t);
+    let v = { s: '', i: '' };
+    try { const d = await getJSON(BASE + 'sec/' + encodeURIComponent(t.toLowerCase()) + '.json', 15000); if (d && !d._404) { v = { s: String(d.sector || d.industry || ''), i: String(d.industry || '') }; if (/^us listed$/i.test(v.s)) v.s = 'ADR / foreign (no sector in file)'; } } catch (e) {}
+    secCache.set(t, v); return v;
+  }
+  async function getSector(t) { return (await getInfo(t)).s; }
+    async function pool(items, fn, n = 8) { let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const x = items[i++]; await fn(x); } })); }
+async function runOverlap() {
+    const a = $('ovA').value.trim().toUpperCase(), b = $('ovB').value.trim().toUpperCase();
+    const out = $('ovOut');
+    if (!a || !b) { out.innerHTML = '<p class="msg">Enter both tickers.</p>'; return; }
+    out.innerHTML = '<p class="msg">Loading holdings…</p>';
+    const funds = await fetchMany([a, b]);
+    if (!funds.has(a) || !funds.has(b)) throw new Error('No data for ' + (funds.has(a) ? b : a));
+    const fa = { data: funds.get(a) }, fb = { data: funds.get(b) };
+    const ha = extractHoldings(fa.data), hb = extractHoldings(fb.data);
+    if (!ha.size || !hb.size) { out.innerHTML = '<p class="msg">Holdings not available for one or both funds (bond, trust or derivative ETFs may have no stock holdings map).</p>'; return; }
+    const rows = [], onlyA = [], onlyB = [];
+    let overlapW = 0, active = 0;
+    for (const [t, x] of ha) { const y = hb.get(t); if (y) { const m = Math.min(x.w, y.w); overlapW += m; active += Math.abs(x.w - y.w); rows.push({ t, wa: x.w, wb: y.w, m, s: '' }); } else { active += x.w; onlyA.push({ t, w: x.w, s: '' }); } }
+    for (const [t, y] of hb) if (!ha.has(t)) { active += y.w; onlyB.push({ t, w: y.w, s: '' }); }
+    active /= 2;
+    rows.sort((x, y) => y.m - x.m); onlyA.sort((x, y) => y.w - x.w); onlyB.sort((x, y) => y.w - x.w);
+    out.innerHTML = '<p class="msg">Looking up sectors…</p>';
+    const look = [...rows.slice(0, 40), ...onlyA.slice(0, 12), ...onlyB.slice(0, 12)];
+    await pool(look, async r => { r.s = await getSector(r.t); });
+    const secOv = new Map(); let rest = 0;
+    rows.forEach((r, i) => { if (i < 40) secOv.set(r.s || 'Unclassified', (secOv.get(r.s || 'Unclassified') || 0) + r.m); else rest += r.m; });
+    if (rest > 0) secOv.set('Smaller shared holdings (not classified)', rest);
+    const sumA = [...ha.values()].reduce((q, x) => q + x.w, 0), sumB = [...hb.values()].reduce((q, x) => q + x.w, 0);
+    const inA = rows.reduce((q, x) => q + x.wa, 0) / (sumA || 1) * 100, inB = rows.reduce((q, x) => q + x.wb, 0) / (sumB || 1) * 100;
+    const secRows = [...secOv].sort((x, y) => y[1] - x[1]), mx = secRows[0] ? secRows[0][1] : 1;
+    const top = k => [...rows].slice(0, k).reduce((q, x) => q + x.m, 0) / (overlapW || 1) * 100;
+    const top10 = h => [...h.values()].map(x => x.w).sort((p, q) => q - p).slice(0, 10).reduce((q, x) => q + x, 0);
+    const jac = rows.length / (ha.size + hb.size - rows.length) * 100;
+    const da = fa.data.holdings_as_of || '?', db = fb.data.holdings_as_of || '?';
+    const lev = (t, d) => /derivative/i.test(d.source_layer || '') || /\b(2x|3x|-1x|-2x|-3x|ultra|bull|bear|leverag|inverse|daily)\b/i.test(d.name || d.fund_name || '') || /^(SOXL|SOXS|TQQQ|SQQQ|UPRO|SPXL|SPXU|TECL|TECS)$/.test(t);
+    const warn = [];
+    if (da !== db) warn.push(`Holdings are from different dates (${esc(a)} ${esc(da)} vs ${esc(b)} ${esc(db)}); SEC-filed ETFs can be months old, so the overlap is approximate.`);
+    [[a, fa.data], [b, fb.data]].forEach(([t, d]) => { if (lev(t, d)) warn.push(`${esc(t)} looks leveraged/inverse/derivative-based: its stock weights understate its swap and futures exposure, so weight overlap is not the same as exposure overlap.`); });
+    // return statistics (needs ≥52 weekly returns on both)
+    const ra = extractReturns(fa.data), rb = extractReturns(fb.data), n = Math.min(ra.length, rb.length);
+    let rs = '<p class="msg">Return comparison unavailable: weekly returns are missing for one or both funds (typical for ETFs read from SEC filings).</p>';
+    if (n >= 52) {
+      const A = ra.slice(-n), B = rb.slice(-n), pa = [], pb = [];
+      for (let i = 0; i < n; i++) if (Number.isFinite(A[i]) && Number.isFinite(B[i])) { pa.push(A[i]); pb.push(B[i]); }
+      if (pa.length >= 52) {
+        const mean = v => v.reduce((q, x) => q + x, 0) / v.length, sd = v => { const m = mean(v); return Math.sqrt(v.reduce((q, x) => q + (x - m) ** 2, 0) / (v.length - 1)); };
+        const cum = v => (v.reduce((q, x) => q * (1 + x), 1) - 1) * 100, ma = mean(pa), mb = mean(pb);
+        const cov = pa.reduce((q, x, i) => q + (x - ma) * (pb[i] - mb), 0) / (pa.length - 1), beta = cov / sd(pb) ** 2, c = cov / (sd(pa) * sd(pb));
+        const a1 = cum(pa.slice(-52)), b1 = cum(pb.slice(-52)), aN = cum(pa), bN = cum(pb), vol = v => sd(v) * Math.sqrt(52) * 100;
+        const cl = v => v >= 0 ? 'in' : 'out';
+        rs = `<table><thead><tr><th></th><th class="n">${esc(a)}</th><th class="n">${esc(b)}</th><th class="n">A − B</th></tr></thead><tbody>
+          <tr><td>Return, last 52 weeks</td><td class="n ${cl(a1)}">${a1.toFixed(1)}%</td><td class="n ${cl(b1)}">${b1.toFixed(1)}%</td><td class="n">${(a1 - b1).toFixed(1)} pts</td></tr>
+          <tr><td>Return, last ${pa.length} weeks</td><td class="n ${cl(aN)}">${aN.toFixed(1)}%</td><td class="n ${cl(bN)}">${bN.toFixed(1)}%</td><td class="n">${(aN - bN).toFixed(1)} pts</td></tr>
+          <tr><td>Volatility (annualised)</td><td class="n">${vol(pa).toFixed(1)}%</td><td class="n">${vol(pb).toFixed(1)}%</td><td class="n">${(vol(pa) - vol(pb)).toFixed(1)} pts</td></tr></tbody></table>
+          <p class="msg">Weekly return correlation <b>${c.toFixed(2)}</b> · beta of ${esc(a)} to ${esc(b)} <b>${beta.toFixed(2)}</b> (over ${pa.length} weeks).</p>`;
+      }
+    }
+    const mr = METRICS.filter(([k]) => fa.data[k] != null || fb.data[k] != null);
+    const stat = (l, v, sub) => `<div><div class="overlap-big" style="font-size:1.6rem">${v}</div><div class="overlap-label">${l}${sub ? '<br>' + sub : ''}</div></div>`;
+    const uniq = (arr, name, h) => `<div class="card"><header><h2>Only in ${esc(name)}</h2><span class="meta">${arr.length} names · ${arr.reduce((q, x) => q + x.w, 0).toFixed(1)}% of weight</span></header><div class="body" style="max-height:300px;overflow:auto"><table><thead><tr><th>Holding</th><th>Sector</th><th class="n">Weight</th></tr></thead><tbody>${arr.slice(0, 40).map(x => `<tr><td>${esc(x.t)}</td><td class="msg">${esc(x.s)}</td><td class="n">${pct(x.w)}</td></tr>`).join('') || '<tr><td class="msg">None — every holding is shared.</td></tr>'}</tbody></table></div></div>`;
+    const bw = Math.max(...rows.map(r => Math.max(r.wa, r.wb)), 1);
+    out.innerHTML = `
+      ${warn.map(w => `<p class="msg" style="color:var(--mv)">⚠ ${w}</p>`).join('')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px">
+        ${stat('Overlap by weight (Σ min)', overlapW.toFixed(1) + '%')}
+        ${stat('Active share of A vs B', active.toFixed(1) + '%', '½ Σ |wA − wB|')}
+        ${stat('Shared holdings', rows.length, 'of ' + ha.size + ' / ' + hb.size)}
+        ${stat('Names in common', jac.toFixed(0) + '%', 'shared ÷ all distinct names')}
+        ${stat('Top 5 / 10 shared', top(5).toFixed(0) + '% / ' + top(10).toFixed(0) + '%', 'of the overlap')}
+      </div>
+      <div class="grid2" style="margin-bottom:16px">
+        <div class="card"><header><h2>${esc(a)}</h2><span class="meta">${esc(da)}${fa.data.source_layer ? ' · ' + esc(fa.data.source_layer) : ''}</span></header><div class="body">Holdings: <b>${ha.size}</b> · top-10 weight <b>${top10(ha).toFixed(1)}%</b><br>${inA.toFixed(1)}% of ${esc(a)} is also in ${esc(b)}</div></div>
+        <div class="card"><header><h2>${esc(b)}</h2><span class="meta">${esc(db)}${fb.data.source_layer ? ' · ' + esc(fb.data.source_layer) : ''}</span></header><div class="body">Holdings: <b>${hb.size}</b> · top-10 weight <b>${top10(hb).toFixed(1)}%</b><br>${inB.toFixed(1)}% of ${esc(b)} is also in ${esc(a)}</div></div>
+      </div>
+      <div class="card"><header><h2>Overlap by sector</h2><span class="meta">points of overlap · share of total overlap</span></header><div class="body">
+        ${secRows.map(([k, v]) => `<div class="sector-row"><span class="sector-name" style="width:210px">${esc(k)}</span><div class="sector-bars"><div class="sector-bar" style="width:${(v / mx * 100).toFixed(1)}%;background:var(--accent)"></div></div><span class="sector-val">${v.toFixed(2)}</span><span class="sector-val">${(v / (overlapW || 1) * 100).toFixed(0)}%</span></div>`).join('') || '<p class="msg">No shared holdings.</p>'}
+      </div></div>
+      <div class="card"><header><h2>Returns &amp; risk, ${esc(a)} vs ${esc(b)}</h2></header><div class="body">${rs}${mr.length ? `<table style="margin-top:8px"><thead><tr><th>Fund facts</th><th class="n">${esc(a)}</th><th class="n">${esc(b)}</th></tr></thead><tbody>${mr.map(([k, l, f]) => `<tr><td>${l}</td><td class="n">${fa.data[k] == null ? '—' : f(fa.data[k])}</td><td class="n">${fb.data[k] == null ? '—' : f(fb.data[k])}</td></tr>`).join('')}</tbody></table>` : ''}</div></div>
+      <div class="grid2">${uniq(onlyA, a)}${uniq(onlyB, b)}</div>
+      <div class="card"><header><h2>Shared holdings (counters)</h2><span class="meta">${rows.length} names · sorted by overlap</span></header><div class="body" style="max-height:460px;overflow:auto">
+        <table><thead><tr><th>Holding</th><th>Sector</th><th>Weights (${esc(a)} blue · ${esc(b)} amber)</th><th class="n">${esc(a)}</th><th class="n">${esc(b)}</th><th class="n">Diff</th><th class="n">Overlap</th></tr></thead><tbody>
+        ${rows.map(x => `<tr><td>${esc(x.t)}</td><td class="msg">${esc(x.s)}</td><td style="min-width:110px"><div class="sector-bar" style="width:${(x.wa / bw * 100).toFixed(0)}%;background:var(--accent);margin-bottom:2px"></div><div class="sector-bar" style="width:${(x.wb / bw * 100).toFixed(0)}%;background:var(--mv)"></div></td><td class="n">${pct(x.wa)}</td><td class="n">${pct(x.wb)}</td><td class="n ${x.wa >= x.wb ? 'in' : 'out'}">${(x.wa - x.wb >= 0 ? '+' : '') + (x.wa - x.wb).toFixed(2)}</td><td class="n">${pct(x.m)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+      <p><button id="ovCsv">Download overlap (CSV)</button></p>`;
+    const csv = () => ['group,ticker,sector,weight_' + a + ',weight_' + b, ...rows.map(r => ['shared', r.t, '"' + r.s + '"', r.wa, r.wb].join(',')), ...onlyA.map(r => ['only_' + a, r.t, '"' + r.s + '"', r.w, ''].join(',')), ...onlyB.map(r => ['only_' + b, r.t, '"' + r.s + '"', '', r.w].join(','))].join('\n');
+    $('ovCsv').onclick = () => { const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([csv()], { type: 'text/csv' })); l.download = `overlap_${a}_${b}.csv`; l.click(); };
+  }
+
+  // fund file: holdings is a {TICKER: weight %} map (array forms tolerated)
+  function extractHoldings(data) {
+    const m = new Map(), h = data.holdings;
+    const add = (t, w) => { t = String(t || '').trim().toUpperCase(); w = num(w); if (t && w > 0) m.set(t, { w: (m.get(t)?.w || 0) + w, s: '' }); };
+    if (Array.isArray(h)) h.forEach(r => Array.isArray(r) ? add(r[0], r[1]) : add(r.ticker || r.symbol || r.name, r.weight_pct ?? r.weight ?? r.pct));
+    else if (h && typeof h === 'object') Object.entries(h).forEach(([t, w]) => add(t, typeof w === 'object' && w ? (w.weight_pct ?? w.weight) : w));
+    return m;
+  }
+
+  // ============================================================
+  // MODULE 3: SECTOR WEIGHTS + head-to-head metrics
+  // ============================================================
+  const METRICS = [['expense_ratio', 'Expense ratio', v => pct(v)], ['cost', 'Cost', v => pct(v)], ['assets', 'Assets', v => '$' + (v / 1e9).toFixed(2) + 'B'], ['top10_weight', 'Top-10 weight', v => pct(v)], ['return_1y', '1Y return', v => pct(v)], ['return_3y', '3Y return', v => pct(v)], ['return_5y', '5Y return', v => pct(v)], ['volatility', 'Volatility', v => pct(v)], ['beta', 'Beta', v => Number(v).toFixed(2)], ['worst_fall', 'Worst fall', v => pct(v)]];
+let secState = null;
+  async function runSectors() {
+    const a = $('secA').value.trim().toUpperCase(), b = $('secB').value.trim().toUpperCase();
+    const out = $('secOut');
+    if (!a || !b) { out.innerHTML = '<p class="msg">Enter both tickers.</p>'; return; }
+    out.innerHTML = '<p class="msg">Loading… (sectors are looked up per holding, this can take a few seconds)</p>';
+    const funds = await fetchMany([a, b]);
+    if (!funds.has(a) || !funds.has(b)) throw new Error('No data for ' + (funds.has(a) ? b : a));
+    const fa = { data: funds.get(a) }, fb = { data: funds.get(b) };
+    const load = async d => {
+      const h = [...extractHoldings(d)].map(([t, x]) => ({ t, w: x.w })).sort((x, y) => y.w - x.w), top = h.slice(0, 60);
+      await pool(top, async x => { const v = await getInfo(x.t); x.s = v.s; x.i = v.i; });
+      const total = h.reduce((q, x) => q + x.w, 0), cov = top.reduce((q, x) => q + x.w, 0);
+      return { list: top, total, cov, n: h.length };
+    };
+    const [la, lb] = await Promise.all([load(fa.data), load(fb.data)]);
+    if (!la.list.length && !lb.list.length) { out.innerHTML = '<p class="msg">No stock holdings found for these funds.</p>'; return; }
+    secState = { a, b, fa: fa.data, fb: fb.data, la, lb, basis: 'nav', group: 'sector', sort: 'max' };
+    renderSectors();
+  }
+  function renderSectors() {
+    const S = secState, { a, b, la, lb } = S, out = $('secOut');
+    const grp = (L, norm) => {
+      const f = norm ? 100 / (L.total || 1) : 1, m = new Map();
+      for (const x of L.list) { const k = (S.group === 'industry' ? (x.i || x.s) : x.s) || 'Unclassified'; const e = m.get(k) || { w: 0, h: [] }; e.w += x.w * f; e.h.push({ t: x.t, w: x.w * f }); m.set(k, e); }
+      const rest = (L.total - L.cov) * f; if (rest > 0.05) m.set('Smaller holdings (not classified)', { w: rest, h: [] });
+      return m;
+    };
+    const norm = S.basis === 'norm', ma = grp(la, norm), mb = grp(lb, norm);
+    const keys = [...new Set([...ma.keys(), ...mb.keys()])], W = (m, k) => (m.get(k) || { w: 0 }).w;
+    const sorters = { max: k => -Math.max(W(ma, k), W(mb, k)), a: k => -W(ma, k), b: k => -W(mb, k), diff: k => -Math.abs(W(ma, k) - W(mb, k)) };
+    keys.sort((x, y) => sorters[S.sort](x) - sorters[S.sort](y));
+    const max = Math.max(...keys.map(k => Math.max(W(ma, k), W(mb, k))), 1);
+    const secOv = keys.reduce((q, k) => q + Math.min(W(ma, k), W(mb, k)), 0), top = m => [...m].sort((x, y) => y[1].w - x[1].w)[0];
+    const tA = top(ma), tB = top(mb), sumM = m => [...m.values()].reduce((q, e) => q + e.w, 0);
+    const stat = (l, v, sub) => `<div><div class="overlap-big" style="font-size:1.5rem">${v}</div><div class="overlap-label">${l}${sub ? '<br>' + sub : ''}</div></div>`;
+    const sel = (id, opts, cur) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+    const lowCov = Math.min(la.total, lb.total) < 90;
+    let html = `<div class="row">
+      <div><label>Weights as</label>${sel('secBasis', [['nav', '% of fund assets'], ['norm', '% of stock holdings (normalised)']], S.basis)}</div>
+      <div><label>Group by</label>${sel('secGroup', [['sector', 'Sector'], ['industry', 'Industry']], S.group)}</div>
+      <div><label>Sort by</label>${sel('secSort', [['max', 'Largest weight'], ['a', a + ' weight'], ['b', b + ' weight'], ['diff', 'Biggest difference']], S.sort)}</div>
+      <button id="secCsv">Download CSV</button></div>
+      ${lowCov && !norm ? `<p class="msg" style="color:var(--mv)">⚠ Stocks make up only ${la.total.toFixed(0)}% of ${esc(a)} and ${lb.total.toFixed(0)}% of ${esc(b)}; the rest is swaps, futures, cash or other holdings. Use "% of stock holdings" for a like-for-like mix.</p>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px">
+        ${stat('Sector similarity', secOv.toFixed(1) + '%', 'Σ min of group weights')}
+        ${stat('Largest group, ' + esc(a), tA ? tA[1].w.toFixed(1) + '%' : '—', tA ? esc(tA[0]) : '')}
+        ${stat('Largest group, ' + esc(b), tB ? tB[1].w.toFixed(1) + '%' : '—', tB ? esc(tB[0]) : '')}
+        ${stat('Groups', ma.size + ' / ' + mb.size, esc(a) + ' / ' + esc(b))}
+      </div>
+      <div class="card"><header><h2>${S.group === 'industry' ? 'Industry' : 'Sector'} weights</h2><span class="meta">${esc(a)} (blue) vs ${esc(b)} (amber) · Diff = A − B · click a row for its holdings</span></header><div class="body">`;
+    for (const k of keys) {
+      const wa = W(ma, k), wb = W(mb, k), d = wa - wb, H = new Map();
+      (ma.get(k) || { h: [] }).h.forEach(x => H.set(x.t, { a: x.w, b: 0 }));
+      (mb.get(k) || { h: [] }).h.forEach(x => H.set(x.t, { a: (H.get(x.t) || { a: 0 }).a, b: x.w }));
+      const hs = [...H].sort((x, y) => Math.max(y[1].a, y[1].b) - Math.max(x[1].a, x[1].b));
+      html += `<details style="margin-bottom:4px"><summary style="list-style:none;cursor:pointer"><div class="sector-row"><span class="sector-name" style="width:200px">${esc(k)}</span><div class="sector-bars"><div class="sector-bar" style="width:${(wa / max * 100).toFixed(1)}%;background:var(--accent)"></div><div class="sector-bar" style="width:${(wb / max * 100).toFixed(1)}%;background:var(--mv)"></div></div><span class="sector-val">${pct(wa)}</span><span class="sector-val">${pct(wb)}</span><span class="sector-val ${d >= 0 ? 'in' : 'out'}">${(d >= 0 ? '+' : '') + d.toFixed(1)}</span></div></summary>
+        ${hs.length ? `<table style="margin:4px 0 8px 210px;width:auto"><thead><tr><th>Holding</th><th class="n">${esc(a)}</th><th class="n">${esc(b)}</th></tr></thead><tbody>${hs.map(([t, v]) => `<tr><td>${esc(t)}</td><td class="n">${v.a ? pct(v.a) : '—'}</td><td class="n">${v.b ? pct(v.b) : '—'}</td></tr>`).join('')}</tbody></table>` : '<p class="msg" style="margin-left:210px">Names below the lookup cut-off (top 60 per fund).</p>'}</details>`;
+    }
+    html += `<p class="msg">${esc(a)}: ${la.list.length} of ${la.n} holdings classified (${la.cov.toFixed(0)}% of assets) · ${esc(b)}: ${lb.list.length} of ${lb.n} (${lb.cov.toFixed(0)}%)</p></div></div>`;
+    const A = S.fa, B = S.fb, rows = [['Holdings (names)', la.n, lb.n], ['Stocks, % of assets', la.total.toFixed(1) + '%', lb.total.toFixed(1) + '%'], ['Top-10 weight', la.list.slice(0, 10).reduce((q, x) => q + x.w, 0).toFixed(1) + '%', lb.list.slice(0, 10).reduce((q, x) => q + x.w, 0).toFixed(1) + '%'], ['Holdings date', A.holdings_as_of || '—', B.holdings_as_of || '—'], ['Source', A.source_layer || '—', B.source_layer || '—'], ...METRICS.filter(([k]) => A[k] != null || B[k] != null).map(([k, l, f]) => [l, A[k] == null ? '—' : f(A[k]), B[k] == null ? '—' : f(B[k])])];
+    html += `<div class="card"><header><h2>Head-to-head</h2></header><div class="body"><table><thead><tr><th></th><th class="n">${esc(a)}</th><th class="n">${esc(b)}</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r[0])}</td><td class="n">${esc(r[1])}</td><td class="n">${esc(r[2])}</td></tr>`).join('')}</tbody></table></div></div>`;
+    const ctry = d => { const c = d.countries || d.country_weights || d.country; return c && typeof c === 'object' ? (Array.isArray(c) ? c.map(r => Array.isArray(r) ? r : [r.country || r.name, r.weight_pct ?? r.weight]) : Object.entries(c)).filter(([k, v]) => k && num(v) > 0) : []; };
+    const ca = new Map(ctry(A).map(([k, v]) => [k, num(v)])), cb = new Map(ctry(B).map(([k, v]) => [k, num(v)]));
+    if (ca.size || cb.size) { const ck = [...new Set([...ca.keys(), ...cb.keys()])].sort((x, y) => Math.max(cb.get(y) || 0, ca.get(y) || 0) - Math.max(cb.get(x) || 0, ca.get(x) || 0)).slice(0, 12); html += `<div class="card"><header><h2>Country exposure</h2><span class="meta">from the fund files</span></header><div class="body"><table><thead><tr><th>Country</th><th class="n">${esc(a)}</th><th class="n">${esc(b)}</th></tr></thead><tbody>${ck.map(k => `<tr><td>${esc(k)}</td><td class="n">${ca.has(k) ? pct(ca.get(k)) : '—'}</td><td class="n">${cb.has(k) ? pct(cb.get(k)) : '—'}</td></tr>`).join('')}</tbody></table></div></div>`; }
+    out.innerHTML = html;
+    [['secBasis', 'basis'], ['secGroup', 'group'], ['secSort', 'sort']].forEach(([id, key]) => { $(id).onchange = e => { S[key] = e.target.value; renderSectors(); }; });
+    $('secCsv').onclick = () => { const c = ['group,' + a + ',' + b + ',diff', ...keys.map(k => `"${k}",${W(ma, k).toFixed(3)},${W(mb, k).toFixed(3)},${(W(ma, k) - W(mb, k)).toFixed(3)}`)].join('\n'); const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([c], { type: 'text/csv' })); l.download = `sectors_${a}_${b}.csv`; l.click(); };
+  }
+
+  // ============================================================
+  // MODULE 4: CORRELATION (weekly returns, diverging heatmap)
+  // ============================================================
+let corrState = null;
+  const PAL = ['#1f4fd8', '#d98a00', '#0f9d6b', '#c2410c', '#8b5cf6', '#0891b2', '#be185d', '#65a30d', '#64748b', '#b91c1c'];
+  async function runCorr() {
+    const tickers = [...new Set($('corrTickers').value.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))];
+    const out = $('corrOut');
+    if (tickers.length < 2 || tickers.length > 10) { out.innerHTML = '<p class="msg">Enter 2–10 tickers.</p>'; return; }
+    out.innerHTML = '<p class="msg">Loading return series…</p>';
+    const funds = await fetchMany(tickers);
+    const series = {}, skipped = []; let weeksEnd = '';
+    tickers.forEach(t => {
+      const d = funds.get(t);
+      if (!d) { skipped.push([t, 'No data (not covered by TickerInside)']); return; }
+      const rets = extractReturns(d), k = rets.filter(Number.isFinite).length;
+      if (k < 110) skipped.push([t, `only ${k} weekly returns (needs ≥110) — typical for ETFs read from SEC filings, including most leveraged/derivative ETFs`]);
+      else { series[t] = rets; weeksEnd = weeksEnd || d.weeks_end || ''; }
+    });
+    const ok = Object.keys(series);
+    const sk = skipped.map(([t, m]) => `<p class="msg" style="color:var(--mv)">⚠ ${esc(t)} left out: ${esc(m)}</p>`).join('');
+    if (ok.length < 2) { out.innerHTML = sk + '<p class="msg">Fewer than two funds have enough weekly return data.</p>'; return; }
+    corrState = { ok, series, sk, weeksEnd, win: 156, pa: ok[0], pb: ok[1] };
+    renderCorr();
+  }
+  function renderCorr() {
+    const S = corrState, { ok } = S, out = $('corrOut'), L = Math.min(...ok.map(t => S.series[t].length));
+    const win = Math.min(S.win, L), arr = {}; ok.forEach(t => { arr[t] = S.series[t].slice(-L).slice(-win); });
+    const fin = v => v.filter(Number.isFinite), mean = v => v.reduce((q, x) => q + x, 0) / v.length;
+    const sd = v => { const m = mean(v); return Math.sqrt(v.reduce((q, x) => q + (x - m) ** 2, 0) / (v.length - 1)); };
+    const cl = v => v >= 0 ? 'in' : 'out', f2 = r => (Math.abs(r) < 0.005 ? 0 : r).toFixed(2);
+    const stats = ok.map(t => {
+      const f = fin(arr[t]); let eq = 1, pk = 1, dd = 0; f.forEach(x => { eq *= 1 + x; pk = Math.max(pk, eq); dd = Math.min(dd, eq / pk - 1); });
+      return { t, n: f.length, tot: (eq - 1) * 100, ann: (Math.pow(eq, 52 / f.length) - 1) * 100, vol: sd(f) * Math.sqrt(52) * 100, worst: Math.min(...f) * 100, best: Math.max(...f) * 100, dd: dd * 100 };
+    });
+    const C = ok.map(i => ok.map(j => i === j ? 1 : pearson(arr[i], arr[j])));
+    const avg = ok.map((_, i) => { const v = C[i].filter((x, j) => j !== i && Number.isFinite(x)); return v.length ? mean(v) : NaN; });
+    const pairs = []; for (let i = 0; i < ok.length; i++) for (let j = i + 1; j < ok.length; j++) if (Number.isFinite(C[i][j])) pairs.push([ok[i], ok[j], C[i][j]]);
+    pairs.sort((x, y) => x[2] - y[2]);
+    // equal-weight portfolio vs average fund volatility (weeks every fund has)
+    let dr = '';
+    const idx = []; for (let k = 0; k < win; k++) if (ok.every(t => Number.isFinite(arr[t][k]))) idx.push(k);
+    if (idx.length >= 26) { const pr = idx.map(k => mean(ok.map(t => arr[t][k]))), pv = sd(pr) * Math.sqrt(52) * 100, av = mean(ok.map(t => sd(idx.map(k => arr[t][k])) * Math.sqrt(52) * 100)); dr = `${stat2('Equal-weight portfolio volatility', pv.toFixed(1) + '%', 'average fund ' + av.toFixed(1) + '%')}${stat2('Diversification ratio', (av / pv).toFixed(2), '1.00 = no benefit; higher = better')}`; }
+    function stat2(l, v, sub) { return `<div><div class="overlap-big" style="font-size:1.5rem">${v}</div><div class="overlap-label">${l}${sub ? '<br>' + sub : ''}</div></div>`; }
+    const heat = r => !Number.isFinite(r) ? '<span class="heat">n/a</span>' : `<span class="heat" style="background:${r >= 0 ? 'rgba(31,79,216,' : 'rgba(179,38,30,'}${(Math.abs(r) * 0.85).toFixed(2)})">${f2(r)}</span>`;
+    // growth of 100
+    const gr = ok.map(t => { let e = 100; return [100, ...arr[t].map(x => (e *= 1 + (Number.isFinite(x) ? x : 0)))]; });
+    const gmin = Math.min(...gr.flat()), gmax = Math.max(...gr.flat()), gw = 600, gh = 160, gy = v => 6 + (gmax - v) / ((gmax - gmin) || 1) * (gh - 12);
+    const growth = `<svg viewBox="0 0 ${gw} ${gh}" width="100%" height="${gh}" preserveAspectRatio="none" role="img" aria-label="Growth of 100">${gr.map((g, i) => `<polyline fill="none" stroke="${PAL[i % 10]}" stroke-width="1.8" vector-effect="non-scaling-stroke" points="${g.map((v, k) => `${(k / (g.length - 1) * gw).toFixed(1)},${gy(v).toFixed(1)}`).join(' ')}"/>`).join('')}</svg><div class="msg">${ok.map((t, i) => `<span style="color:${PAL[i % 10]}">■</span> ${esc(t)} ${gr[i][gr[i].length - 1].toFixed(0)}`).join(' &nbsp; ')} <span style="float:right">growth of 100 · range ${gmin.toFixed(0)}–${gmax.toFixed(0)}</span></div>`;
+    // rolling 26-week correlation for the chosen pair
+    const ra = arr[S.pa], rb = arr[S.pb], RW = 26, pts = [];
+    for (let k = RW; k <= ra.length; k++) { const r = pearson(ra.slice(k - RW, k), rb.slice(k - RW, k)); pts.push(r); }
+    const fp = pts.filter(Number.isFinite), rh = 120, rwid = 600, ry = v => 6 + (1 - v) / 2 * (rh - 12);
+    const rolling = fp.length < 5 ? '<p class="msg">Not enough overlapping weeks for a rolling view in this window (needs ≥ 26 + a few).</p>' : `<svg viewBox="0 0 ${rwid} ${rh}" width="100%" height="${rh}" preserveAspectRatio="none" role="img" aria-label="Rolling correlation"><line x1="0" x2="${rwid}" y1="${ry(0)}" y2="${ry(0)}" stroke="var(--line)"/><polyline fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((v, k) => Number.isFinite(v) ? `${(k / Math.max(pts.length - 1, 1) * rwid).toFixed(1)},${ry(v).toFixed(1)}` : '').filter(Boolean).join(' ')}"/></svg><div class="msg">26-week rolling correlation · latest <b>${f2(fp[fp.length - 1])}</b> · average ${f2(mean(fp))} · range ${f2(Math.min(...fp))} to ${f2(Math.max(...fp))}</div>`;
+    const sel = (id, cur) => `<select id="${id}">${ok.map(t => `<option${t === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+    out.innerHTML = `${S.sk}
+      <div class="row"><div><label>Window</label><select id="corrWin">${[[52, 'Last 52 weeks'], [104, 'Last 104 weeks'], [156, 'Last 156 weeks (all)']].map(([v, l]) => `<option value="${v}"${v === S.win ? ' selected' : ''}>${l}</option>`).join('')}</select></div><button id="corrCsv">Download CSV</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:14px">
+        ${pairs.length ? stat2('Most diversifying pair', f2(pairs[0][2]), esc(pairs[0][0] + ' / ' + pairs[0][1])) : ''}${pairs.length ? stat2('Most similar pair', f2(pairs[pairs.length - 1][2]), esc(pairs[pairs.length - 1][0] + ' / ' + pairs[pairs.length - 1][1])) : ''}${dr}
+      </div>
+      <div class="card"><header><h2>Weekly return correlation</h2><span class="meta">${win} weeks${S.weeksEnd ? ' to ' + esc(S.weeksEnd) : ''} · blue = together, red = opposite · pairs use weeks both funds have</span></header><div class="body"><table><thead><tr><th></th>${ok.map(t => `<th class="n">${esc(t)}</th>`).join('')}<th class="n">Avg vs others</th></tr></thead><tbody>
+        ${ok.map((t, i) => `<tr><th>${esc(t)}</th>${C[i].map(r => `<td>${heat(r)}</td>`).join('')}<td class="n"><b>${Number.isFinite(avg[i]) ? f2(avg[i]) : '—'}</b></td></tr>`).join('')}</tbody></table><p class="msg">Lower "Avg vs others" = better diversifier within this set. Correlation describes weekly co-movement, not holdings overlap, and changes across regimes.</p></div></div>
+      <div class="card"><header><h2>Return &amp; risk</h2><span class="meta">same window · from weekly total returns</span></header><div class="body"><table><thead><tr><th>ETF</th><th class="n">Total return</th><th class="n">Annualised</th><th class="n">Volatility</th><th class="n">Return / vol</th><th class="n">Best week</th><th class="n">Worst week</th><th class="n">Max drawdown</th><th class="n">Weeks</th></tr></thead><tbody>
+        ${stats.map(x => `<tr><td><b>${esc(x.t)}</b></td><td class="n ${cl(x.tot)}">${x.tot.toFixed(1)}%</td><td class="n ${cl(x.ann)}">${x.ann.toFixed(1)}%</td><td class="n">${x.vol.toFixed(1)}%</td><td class="n">${(x.ann / x.vol).toFixed(2)}</td><td class="n in">${x.best.toFixed(1)}%</td><td class="n out">${x.worst.toFixed(1)}%</td><td class="n out">${x.dd.toFixed(1)}%</td><td class="n">${x.n}</td></tr>`).join('')}</tbody></table><p class="msg">Past weekly returns only — not a forecast. Max drawdown is measured on weekly closes, so intra-week falls are missed.</p></div></div>
+      <div class="grid2"><div class="card"><header><h2>Growth of 100</h2></header><div class="body">${growth}</div></div>
+      <div class="card"><header><h2>Rolling correlation</h2><span class="meta">${sel('corrPa', S.pa)} vs ${sel('corrPb', S.pb)}</span></header><div class="body">${rolling}</div></div></div>`;
+    $('corrWin').onchange = e => { S.win = Number(e.target.value); renderCorr(); };
+    $('corrPa').onchange = e => { S.pa = e.target.value; renderCorr(); };
+    $('corrPb').onchange = e => { S.pb = e.target.value; renderCorr(); };
+    $('corrCsv').onclick = () => { const c = [',' + ok.join(','), ...ok.map((t, i) => t + ',' + C[i].map(r => Number.isFinite(r) ? r.toFixed(4) : '').join(','))].join('\n'); const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([c], { type: 'text/csv' })); l.download = 'correlation.csv'; l.click(); };
+  }
+function extractReturns(data) {
+    const r = Array.isArray(data.weekly) ? data.weekly : (Array.isArray(data.weekly_returns) ? data.weekly_returns : []);
+    return r.map(x => (typeof x === 'number' && Number.isFinite(x)) ? x : NaN);
+  }
+  function pearson(x, y) {
+    const a = [], b = [], n = Math.min(x.length, y.length);
+    for (let i = 0; i < n; i++) { const p = x[x.length - n + i], q = y[y.length - n + i]; if (Number.isFinite(p) && Number.isFinite(q)) { a.push(p); b.push(q); } }
+    if (a.length < 10) return NaN;
+    const ma = a.reduce((s, v) => s + v, 0) / a.length, mb = b.reduce((s, v) => s + v, 0) / b.length;
+    let sxy = 0, sx = 0, sy = 0;
+    for (let i = 0; i < a.length; i++) { sxy += (a[i] - ma) * (b[i] - mb); sx += (a[i] - ma) ** 2; sy += (b[i] - mb) ** 2; }
+    return sx && sy ? sxy / Math.sqrt(sx * sy) : NaN;
+  }
+
+  // ============================================================
+  // MODULE 5: HOLDINGS CHANGE (adapted from original)
+  // ============================================================
+const chgState = {};
+  const ents = x => Array.isArray(x) ? x : (x && typeof x === 'object' ? Object.entries(x) : []);
+  const tw = x => Array.isArray(x) ? [String(x[0]), num(x[1])] : [String(x.ticker ?? x.t ?? x.key ?? '?'), num(x.weight ?? x.w ?? x.weight_pct ?? x.after)];
+  const tba = x => Array.isArray(x) ? [String(x[0]), num(x[1]), num(x[2])] : [String(x.ticker ?? x.t ?? x.key ?? '?'), num(x.before ?? x.from ?? x.b), num(x.after ?? x.to ?? x.a)];
+  const stepDate = e => String(e.date ?? e.file_date ?? e.to ?? '');
+  const stepPrev = e => String(e.previous ?? e.from ?? e.prev ?? '');
+  const pp = v => v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(2) + ' pp';
+  const relPct = (b, a) => b > 0 && a != null ? (a / b - 1) * 100 : null;
+  function stepRows(step, thr) {
+    const rev = new Set(ents(step.reverted).map(x => (Array.isArray(x) ? x[0] : (x && x.ticker) || x)).map(String));
+    const r = [];
+    for (const x of ents(step.entered)) { const [k, w] = tw(x); r.push({ c: 'entered', h: k, b: null, a: w, d: w, rel: null, rv: rev.has(k) }); }
+    for (const x of ents(step.exited)) { const [k, w] = tw(x); r.push({ c: 'exited', h: k, b: w, a: null, d: -w, rel: null }); }
+    for (const x of ents(step.moved)) { const [k, b, a] = tba(x); const d = a - b; if (Math.abs(d) >= thr - 1e-9) r.push({ c: 'moved', h: k, b, a, d, rel: relPct(b, a) }); }
+    return r;
+  }
+  function netRows(steps, baseline, thr) {
+    const net = new Map(), add = (k, v) => net.set(k, (net.get(k) || 0) + v), used = steps.filter(e => stepDate(e) > baseline && !e.restated);
+    for (const e of used) { for (const x of ents(e.entered)) { const [k, w] = tw(x); add(k, w); } for (const x of ents(e.exited)) { const [k, w] = tw(x); add(k, -w); } for (const x of ents(e.moved)) { const [k, b, a] = tba(x); add(k, a - b); } }
+    return { used, rows: [...net].filter(([, d]) => Math.abs(d) >= thr - 1e-9).map(([h, d]) => ({ c: 'net', h, b: null, a: null, d, rel: null })) };
+  }
+  // Holdings-change fallback: quarterly SEC reports (Form N-PORT). Covers funds the
+  // daily issuer-file layer misses — Invesco QQQ, RSP etc. included. Weights only,
+  // one step per reported quarter, no share counts (so no "actually traded").
+  async function quarterlySteps(t) {
+    const k = t.toLowerCase();
+    const q = await getJSON(BASE + 'quarterly/' + encodeURIComponent(k) + '.json', 20000);
+    if (q._404) throw new Error('No data for ' + t.toUpperCase());
+    const rl = (q.report_list || []).map(r => r.holdings_as_of).filter(Boolean).sort();
+    if (rl.length < 2) throw new Error(t.toUpperCase() + ': holdings history exists only for funds read daily from issuer files; only ' + rl.length + ' quarterly SEC report(s) archived here (needs 2)');
+    const dates = rl.slice(-4), snaps = await Promise.all(dates.map(d => getJSON(BASE + 'history/' + encodeURIComponent(k) + '/' + encodeURIComponent(d) + '.json', 30000)));
+    const maps = snaps.map(s => s._404 ? null : extractHoldings(s));
+    const steps = [];
+    for (let i = 1; i < dates.length; i++) {
+      const a = maps[i - 1], b = maps[i];
+      if (!a || !b) { steps.push({ date: dates[i], previous: dates[i - 1], restated: true, entered: [], exited: [], moved: [] }); continue; }
+      const entered = [], exited = [], moved = []; let wm = 0;
+      for (const [h, x] of a) { const y = b.get(h); if (y) { if (Math.abs(y.w - x.w) >= 0.001) moved.push([h, x.w, y.w]); wm += Math.abs(y.w - x.w); } else { exited.push([h, x.w]); wm += x.w; } }
+      for (const [h, y] of b) if (!a.has(h)) { entered.push([h, y.w]); wm += y.w; }
+      steps.push({ date: dates[i], previous: dates[i - 1], entered, exited, moved, names_turnover_pp: (entered.length + exited.length) / (a.size || 1) * 100, weights_moved_pp: wm / 2, restated: false });
+    }
+    return { ticker: t.toUpperCase(), data: { quarterly: true, quarterly_source: 'SEC Form N-PORT, quarterly reports', holdings_as_of: dates[dates.length - 1], file_dates: rl, changes: steps } };
+  }
+  async function runChange() {
+    const tickers = [...new Set($('chgTickers').value.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 10);
+    const period = $('chgPeriod').value, thr = Math.max(0.05, num($('chgThr').value) || 0.05);
+    const out = $('chgOut');
+    if (!tickers.length) { out.innerHTML = '<p class="msg">Enter at least one ticker.</p>'; return; }
+    out.innerHTML = '<p class="msg">Loading…</p>';
+    const results = await Promise.allSettled(tickers.map(async t => {
+      try { return await fundData(t, 'history'); }
+      catch (e) { return await quarterlySteps(t); }
+    }));
+    let html = '<div id="chgSummary"></div>';
+    const ready = [];
+    results.forEach((r, i) => {
+      if (r.status !== 'fulfilled') { html += `<div class="card"><header><h2>${esc(tickers[i])}</h2></header><div class="body"><p class="err">${esc(r.reason && r.reason.message ? r.reason.message : 'Request failed')}${/No data/.test(r.reason && r.reason.message || '') ? ' — not covered: no daily issuer-file history and no quarterly SEC reports archived for it.' : ''}</p></div></div>`; return; }
+      const { ticker, data } = r.value;
+      let ch = data.changes; if (ch && !Array.isArray(ch) && typeof ch === 'object') ch = Object.entries(ch).map(([d, v]) => ({ date: d, ...v }));
+      const steps = (Array.isArray(ch) ? ch : []).filter(e => e && typeof e === 'object').sort((a, b) => stepDate(a).localeCompare(stepDate(b)));
+      chgState[ticker] = { ticker, data, steps, thr, period, sel: null, rows: [] };
+      html += `<div id="chgCard_${esc(ticker)}"></div>`; ready.push(ticker);
+    });
+    out.innerHTML = html || '<p class="msg">No data returned.</p>';
+    await Promise.all(ready.map(t => renderChgCard(t)));
+    const common = new Map();
+    ready.forEach(t => chgState[t].rows.forEach(x => { if (x.d) { const e = common.get(x.h) || []; e.push([t, x.d]); common.set(x.h, e); } }));
+    const cm = [...common].filter(([, e]) => e.length >= 2).sort((x, y) => Math.abs(y[1].reduce((q, z) => q + z[1], 0)) - Math.abs(x[1].reduce((q, z) => q + z[1], 0))).slice(0, 15);
+    $('chgSummary').innerHTML = (cm.length ? `<div class="card"><header><h2>Moving in several ETFs</h2><span class="meta">same holding changed in 2+ of your ETFs</span></header><div class="body"><table><tbody>${cm.map(([h, e]) => `<tr><td><b>${esc(h)}</b></td><td>${e.map(([t, d]) => `<span class="${d >= 0 ? 'in' : 'out'}">${esc(t)} ${(d >= 0 ? '+' : '') + d.toFixed(2)}</span>`).join(' · ')}</td></tr>`).join('')}</tbody></table></div></div>` : '') + (ready.length ? '<p><button id="chgCsv">Download changes (CSV)</button></p>' : '');
+    const b = $('chgCsv'); if (b) b.onclick = () => { const c = ['etf,change,holding,before,after,delta_pts,relative_pct', ...ready.flatMap(t => chgState[t].rows.map(x => [t, x.c, x.h, x.b ?? '', x.a ?? '', x.d.toFixed(4), x.rel == null ? '' : x.rel.toFixed(2)].join(',')))].join('\n'); const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([c], { type: 'text/csv' })); l.download = 'holdings_changes.csv'; l.click(); };
+  }
+  async function renderChgCard(t) {
+    const S = chgState[t], box = $('chgCard_' + t), { steps, data, thr } = S;
+    if (!steps.length) { box.innerHTML = `<div class="card"><header><h2>${esc(t)}</h2></header><div class="body"><p class="msg">No change steps yet (the archive keeps one snapshot per file date; keys: ${esc(Object.keys(data).slice(0, 8).join(', '))}).</p></div></div>`; return; }
+    let rows = [], label = '', tiles = '', stepObj = null;
+    const tile = (l, v, c = '') => `<div><div class="overlap-label">${l}</div><div class="${c}" style="font-weight:700">${v}</div></div>`;
+    if (S.sel != null || S.period === 'latest') {
+      stepObj = steps[S.sel != null ? S.sel : steps.length - 1];
+      label = `${stepPrev(stepObj)} → ${stepDate(stepObj)}${S.sel != null ? ' (selected step)' : ' (latest)'}${data.quarterly ? ' · quarterly SEC reports: weights only, so every move is drift + trading' : ''}`;
+      if (stepObj.restated) { S.rows = []; box.innerHTML = `<div class="card"><header><h2>${esc(t)}</h2><span class="meta">${esc(label)} · restatement, no trades</span></header></div>`; return; }
+      rows = stepRows(stepObj, thr);
+      tiles = tile('Entered / exited / moved', `${ents(stepObj.entered).length} / ${ents(stepObj.exited).length} / ${ents(stepObj.moved).length}`) + tile('Names turnover', pp(stepObj.names_turnover_pp)) + tile('Weights moved', pp(stepObj.weights_moved_pp)) + tile('Actually traded', pp(stepObj.traded_pp));
+    } else {
+      const days = S.period === 'week' ? 7 : 30, since = new Date(); since.setDate(since.getDate() - days);
+      const iso = since.toISOString().slice(0, 10), dates = new Set((Array.isArray(data.file_dates) ? data.file_dates : []).map(String));
+      steps.forEach(e => { if (stepDate(e)) dates.add(stepDate(e)); if (stepPrev(e)) dates.add(stepPrev(e)); });
+      const sorted = [...dates].sort(); let baseline = sorted[0] || iso; for (const d of sorted) if (d <= iso) baseline = d;
+      const n = netRows(steps, baseline, thr); rows = n.rows;
+      label = `${baseline} → ${stepDate(steps[steps.length - 1])} (${n.used.length} step${n.used.length === 1 ? '' : 's'})${sorted[0] > iso ? ' · archive is shorter than the window' : ''}`;
+      tiles = tile('Steps combined', n.used.length) + tile('Names turnover (sum)', pp(n.used.reduce((q, e) => q + num(e.names_turnover_pp), 0))) + tile('Actually traded (sum)', n.used.some(e => e.traded_pp != null) ? pp(n.used.reduce((q, e) => q + num(e.traded_pp), 0)) : '—');
+    }
+    rows.sort((x, y) => Math.abs(y.d) - Math.abs(x.d)); S.rows = rows;
+    const up = rows.filter(x => x.d > 0), dn = rows.filter(x => x.d < 0), sum = a => a.reduce((q, x) => q + x.d, 0);
+    const look = rows.slice(0, 25); await pool(look, async x => { x.s = await getSector(x.h); });
+    const sec = new Map(); look.forEach(x => sec.set(x.s || 'Unclassified', (sec.get(x.s || 'Unclassified') || 0) + x.d));
+    const secR = [...sec].sort((x, y) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 8), sm = Math.max(...secR.map(x => Math.abs(x[1])), 0.001);
+    const tbl = (a, cls) => a.length ? `<div style="max-height:320px;overflow:auto"><table><thead><tr><th>Holding</th><th>Type</th><th class="n">Before</th><th class="n">After</th><th class="n">Δ pts</th><th class="n">Δ %</th></tr></thead><tbody>${a.slice(0, 60).map(x => `<tr><td>${esc(x.h)}</td><td class="mv">${esc(x.c)}${x.rv ? ' <span class="msg" title="held two files earlier — likely a file glitch">⚠</span>' : ''}</td><td class="n">${x.b == null ? '—' : pct(x.b)}</td><td class="n">${x.a == null ? '—' : pct(x.a)}</td><td class="n ${cls}">${(x.d >= 0 ? '+' : '') + x.d.toFixed(3)}</td><td class="n">${x.rel == null ? '—' : (x.rel >= 0 ? '+' : '') + x.rel.toFixed(1) + '%'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="msg">None.</p>';
+    const tl = steps.slice().reverse().map(e => { const i = steps.indexOf(e); return `<tr><td>${esc(stepPrev(e))} → ${esc(stepDate(e))}</td><td class="n">${ents(e.entered).length}</td><td class="n">${ents(e.exited).length}</td><td class="n">${ents(e.moved).length}</td><td class="n">${pp(e.names_turnover_pp)}</td><td class="n">${pp(e.weights_moved_pp)}</td><td class="n">${pp(e.traded_pp)}</td><td class="msg">${e.restated ? 'restated' : ''}</td><td><button class="stepBtn" data-i="${i}">View</button></td></tr>`; }).join('');
+    box.innerHTML = `<div class="card"><header><h2>${esc(t)}</h2><span class="meta">${esc(label)}${S.sel != null ? ' <button id="chgBack_' + esc(t) + '">back to period</button>' : ''}</span></header><div class="body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px">${tiles}${tile('Weight added', '+' + sum(up).toFixed(2) + ' pts', 'in')}${tile('Weight removed', sum(dn).toFixed(2) + ' pts', 'out')}${tile('Up / down', up.length + ' / ' + dn.length)}</div>
+      <p class="msg">"Moved" weights include price drift, not just trading: a stock that rallies gains weight with no trade. Use <b>Actually traded</b> (from share counts) to judge real turnover. The files list weight moves of 0.05 pts or more only.</p>
+      <div class="grid2"><div><div class="overlap-label">Increases / new positions (${up.length})</div>${tbl(up, 'in')}</div><div><div class="overlap-label">Decreases / dropped (${dn.length})</div>${tbl(dn, 'out')}</div></div>
+      ${secR.length ? `<div style="margin-top:12px"><div class="overlap-label">Net weight change by sector (largest ${look.length} moves)</div>${secR.map(([k, v]) => `<div class="sector-row"><span class="sector-name" style="width:200px">${esc(k)}</span><div class="sector-bars"><div class="sector-bar" style="width:${(Math.abs(v) / sm * 100).toFixed(0)}%;background:${v >= 0 ? 'var(--in)' : 'var(--out)'}"></div></div><span class="sector-val ${v >= 0 ? 'in' : 'out'}" style="width:70px">${(v >= 0 ? '+' : '') + v.toFixed(2)}</span></div>`).join('')}</div>` : ''}
+      <details style="margin-top:12px"><summary class="msg" style="cursor:pointer">All archived steps (${steps.length}) — pick one to view</summary><table><thead><tr><th>Step</th><th class="n">In</th><th class="n">Out</th><th class="n">Moved</th><th class="n">Names turnover</th><th class="n">Weights moved</th><th class="n">Traded</th><th></th><th></th></tr></thead><tbody>${tl}</tbody></table></details></div></div>`;
+    box.querySelectorAll('.stepBtn').forEach(b => { b.onclick = () => { S.sel = Number(b.dataset.i); renderChgCard(t); }; });
+    const bk = $('chgBack_' + t); if (bk) bk.onclick = () => { S.sel = null; renderChgCard(t); };
+  }
+
+  // ============================================================
+  // MODULE 6: FUND BROWSER (issuer screen, /screen?issuer=…)
+  // ============================================================
+const fbState = { items: [], issuer: '', as_of: '', tried: false };
+  function showTab(name) { const b = document.querySelector('.tab[data-tab="' + name + '"]'); if (b) b.click(); }
+  async function runFunds() {
+    const out = $('fbOut'), issuer = $('fbIssuer').value.trim();
+    if (!issuer) { out.innerHTML = '<p class="msg">Type an issuer name.</p>'; return; }
+    out.innerHTML = '<p class="msg">Loading funds for ' + esc(issuer) + '…</p>';
+    const items = []; let next = 0, total = null, as_of = '';
+    for (let pages = 0; pages < 40; pages++) {
+      const d = await getJSON(BASE + 'screen?issuer=' + encodeURIComponent(issuer) + '&limit=50&offset=' + next, 20000);
+      if (d._404) { out.innerHTML = '<p class="err">The screen endpoint is unavailable.</p>'; return; }
+      if (d.error) { out.innerHTML = '<p class="err">' + esc((d.error && (d.error.message || d.error.reason)) || JSON.stringify(d.error)) + '</p>'; return; }
+      as_of = as_of || d.as_of || ''; total = d.total == null ? items.length : d.total;
+      items.push(...(d.funds || []));
+      if (d.next == null || !(d.funds || []).length || items.length >= total) break;
+      const m = String(d.next).match(/offset=(\d+)/); // `next` is a whole URL, not an offset
+      const nx = m ? Number(m[1]) : items.length;
+      if (nx === next) break;
+      next = nx;
+    }
+    if (!items.length) { out.innerHTML = '<p class="msg">No covered funds for “' + esc(issuer) + '”. Try the spellings the data uses: iShares, Vanguard, SPDR, Global X, Invesco…</p>'; return; }
+    fbState.items = items; fbState.issuer = issuer; fbState.as_of = as_of;
+    renderFunds();
+  }
+  function renderFunds() {
+    const S = fbState, out = $('fbOut');
+    const q = $('fbSearch').value.trim().toUpperCase(), srt = $('fbSort').value;
+    let rows = S.items.slice();
+    if (q) rows = rows.filter(f => String(f.ticker).toUpperCase().includes(q) || String(f.name || '').toUpperCase().includes(q));
+    const cmp = { aum: (x, y) => (y.net_assets || 0) - (x.net_assets || 0), er: (x, y) => (x.expense_ratio == null ? 99 : x.expense_ratio) - (y.expense_ratio == null ? 99 : y.expense_ratio), ticker: (x, y) => String(x.ticker).localeCompare(String(y.ticker)) }[srt];
+    rows.sort(cmp);
+    const money = v => v == null || !Number.isFinite(Number(v)) ? '—' : '$' + (v >= 1e9 ? (v / 1e9).toFixed(1) + 'B' : (v / 1e6).toFixed(0) + 'M');
+    out.innerHTML = `<div class="card"><header><h2>${esc(S.issuer)} · ${rows.length} of ${S.items.length} funds</h2><span class="meta">as of ${esc(S.as_of || '?')} · A / B fill the compare tabs · ＋ appends to Correlation and Holdings Change</span></header><div class="body" style="max-height:540px;overflow:auto">
+      <table><thead><tr><th>Ticker</th><th>Name</th><th>Category</th><th class="n">Cost</th><th class="n">Assets</th><th class="n">Holdings</th><th></th></tr></thead><tbody>
+      ${rows.map(f => `<tr><td><b>${esc(f.ticker)}</b></td><td>${esc(f.name || '')}</td><td class="msg">${esc(f.category || '')}</td><td class="n">${f.expense_ratio == null ? '—' : (+f.expense_ratio).toFixed(2) + '%'}</td><td class="n">${money(f.net_assets)}</td><td class="n">${f.positions == null ? '—' : f.positions}</td><td><button class="fbBtn" data-act="a" data-t="${esc(f.ticker)}">A</button> <button class="fbBtn" data-act="b" data-t="${esc(f.ticker)}">B</button> <button class="fbBtn" data-act="p" data-t="${esc(f.ticker)}">＋</button></td></tr>`).join('')}
+      </tbody></table></div></div>`;
+    out.querySelectorAll('.fbBtn').forEach(b => b.onclick = () => {
+      const t = b.dataset.t, act = b.dataset.act;
+      if (act === 'a') { $('ovA').value = t; $('secA').value = t; showTab('overlap'); }
+      else if (act === 'b') { $('ovB').value = t; $('secB').value = t; showTab('overlap'); }
+      else { ['corrTickers', 'chgTickers'].forEach(id => { const u = $(id); const s = new Set(u.value.split(/[\s,;]+/).map(x => x.trim().toUpperCase()).filter(Boolean)); s.add(t); u.value = [...s].slice(0, 10).join(', '); }); showTab('corr'); }
+    });
+  }
+
+  // ---------- bind buttons (errors are shown, never swallowed) ----------
+  const safe = (fn, outId) => async () => { try { await fn(); } catch (e) { $(outId).innerHTML = `<p class="err">Error: ${esc(e && e.message || e)}</p>`; } };
+  $('flowRun').onclick = safe(runFlows, 'flowOut');
+  $('ovRun').onclick = safe(runOverlap, 'ovOut');
+  $('secRun').onclick = safe(runSectors, 'secOut');
+  $('corrRun').onclick = safe(runCorr, 'corrOut');
+  $('chgRun').onclick = safe(runChange, 'chgOut');
+  $('fbRun').onclick = safe(runFunds, 'fbOut');
+  $('fbSearch').oninput = () => { if (fbState.items.length) renderFunds(); };
+  $('fbSearch').onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); };
+  $('fbSort').onchange = () => { if (fbState.items.length) renderFunds(); };
+  document.querySelectorAll('[data-goto]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); showTab(a.dataset.goto); }));
+  // auto-load the default issuer the first time the Fund Browser tab is opened
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => { if (btn.dataset.tab === 'funds' && !fbState.items.length && !fbState.tried) { fbState.tried = true; runFunds().catch(e => { $('fbOut').innerHTML = '<p class="err">Error: ' + esc(e && e.message || e) + '</p>'; }); } });
+  });
+})();
+</script>
+</body>
+</html>
