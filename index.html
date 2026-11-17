@@ -167,7 +167,7 @@ svg[data-charttip]{cursor:crosshair}
 
 <details style="margin:14px 0 0"><summary class="msg" style="cursor:pointer">What's new</summary>
   <div class="msg" style="margin-top:8px;line-height:1.7">
-    <b>Nov 17, 2026</b> — freshness chip: the title area now shows when the source data was last built and through which dates it runs, turning amber/red when the upstream nightly build runs late or stalls.
+    <b>Nov 17, 2026</b> — freshness chip: the title area now shows when the source data was last built and through which dates it runs, turning amber/red when the upstream nightly build runs late or stalls. When a delay happens, the chip relays the publisher's own stated cause from their incident log and links to their status page — the dashboard never guesses.
     <br><b>Nov 8, 2026</b> — Fund Browser (every fund of any issuer — all 238 Invesco funds one click from comparison) · Holdings Change works for SEC-filed funds via quarterly reports (QQQ, RSP…) · one-request batch loads · grouped Pre-list dropdowns on all four ticker tabs · instant chart tooltips, crosshair cursors and hover polish.
   </div>
 </details>
@@ -218,6 +218,18 @@ svg[data-charttip]{cursor:crosshair}
     try {
       const s = await getJSON(BASE + 'status.json', 15000);
       if (s._404 || !s || !s.built_at) return;
+      // the publisher's own incident log (uptime.json): an open incident carries its "cause" —
+      // relayed as the disclaimer for any delay, so the page reports the source's explanation, never a guess
+      let open = [];
+      try {
+        const u = await getJSON(BASE + 'uptime.json', 20000);
+        if (u && !u._404 && Array.isArray(u.incidents)) open = u.incidents.filter(i => !i.ended);
+      } catch (e2) { /* cause attribution is optional — the chip works without it */ }
+      const upInc = open.find(i => i.component === 'update');
+      const apiInc = open.find(i => i.component === 'api');
+      const causeOf = i => i.kind === 'late' ? 'the nightly build had not run by its deadline'
+        : i.kind === 'bad_body' ? 'a check saw an answer other than the expected file'
+        : i.kind === 'down' ? 'the component failed its checks' : (i.kind || 'unspecified');
       // a build is due by 02:00 UTC after every weekday night — judge lateness against that clock,
       // not raw age, or a normal weekend reads as "stalled" (no builds Fri night → Mon night)
       const deadlines = [];
@@ -228,12 +240,16 @@ svg[data-charttip]{cursor:crosshair}
       }
       const built = new Date(s.built_at).getTime();
       const missed = deadlines.filter(t => t > built).length;          // deadlines passed without a build
-      const latest = deadlines.find(t => t <= Date.now()) || deadlines[0];
       const stalled = missed >= 2;                                    // a whole build cycle missed
       const prices = s.data && s.data.prices && s.data.prices.through;
       const files = s.data && s.data.issuer_files && s.data.issuer_files.newest;
       const nport = s.data && s.data.sec_nport && s.data.sec_nport.dataset;
       const dot = stalled ? 'var(--out)' : missed ? 'var(--mv)' : 'var(--in)';
+      let tail;
+      if (stalled) tail = ' — newer closes are missing upstream; each chart shows where its data ends';
+      else if (missed) tail = ' — newer closes usually appear within hours; charts show where their data ends';
+      else tail = '';
+      if ((stalled || missed) && upInc) tail = ' — the publisher reports: ' + causeOf(upInc) + (upInc.started ? ' (open since ' + esc(upInc.started.slice(0, 10)) + ' UTC)' : '') + '; each chart shows where its data ends';
       const el = $('freshChip');
       if (el) el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dot};margin-right:6px;vertical-align:middle"></span>` +
         esc((stalled ? '⚠ build stalled — last successful source build ' : missed ? 'source build late — last successful build ' : 'source data built ') + s.built_at.slice(0, 16).replace('T', ' ') + ' UTC') +
@@ -241,7 +257,9 @@ svg[data-charttip]{cursor:crosshair}
         (files ? ' · holdings files through ' + esc(files) : '') +
         (prices ? ' · prices through ' + esc(prices) : '') +
         (nport ? ' · SEC reports ' + esc(nport) : '') +
-        (stalled ? ' — newer closes are missing upstream; each chart shows where its data ends' : missed && !stalled ? ' — newer closes usually appear within hours; charts show where their data ends' : '');
+        tail +
+        (apiInc ? ' · <a href="https://tickerinside.com/status/" target="_blank" rel="noopener">publisher status</a>: API index check failing since ' + esc(apiInc.started.slice(0, 10)) + ' — the data files this page reads still serve' :
+          (missed || stalled) ? ' · <a href="https://tickerinside.com/status/" target="_blank" rel="noopener">publisher status</a>' : '');
     } catch (e) { /* the chip is auxiliary — stay hidden if it cannot load */ }
   })();
 
