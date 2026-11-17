@@ -1,3 +1,5 @@
+# etf-flow-overlap-dashboard
+Free single-file ETF dashboard: fund flows, overlap, sector mix, correlation &amp; holdings changes — no install, no API key, no server. Runs in your browser on open data.
 # ETF Flow & Overlap Dashboard
 
 **One HTML file. Free open data. No install, no account, no API key, no backend.**
@@ -93,7 +95,6 @@ Static files carry `ETag` + `Cache-Control: public, max-age=300`, so repeat view
 
 - **Zero dependencies, zero build.** No CDN, no framework, no Bun/Webpack. One file you can email, inspect in Notepad, and audit offline. Charts are hand-rolled SVG; styling is ~1KB of CSS variables (auto light/dark).
 - **Batch-first fetching.** Multi-ticker tabs read `/batch` (one GET for ≤10 funds) and fall back to per-fund GETs on partial failure.
-- **Freshness chip.** On load the dashboard reads the source's own `status.json` and shows, next to the title, when the data was last built and through which dates (holdings files, prices, SEC reports) — turning amber when the nightly build runs late, red when it stalls. The page answers "how old is this?" before it's asked.
 - **Concurrency-bounded sector lookups** (pool of 8) instead of hundreds of parallel requests.
 - **Errors are information.** Every failure surfaces a human explanation ("flows don't exist for this fund because…", "only 34 weekly returns, needs 110") instead of a blank panel. `Promise.allSettled` throughout, so one bad ticker never kills a whole ranking.
 - **Tolerant parsers.** Holdings arrive as objects *or* arrays depending on the layer; parsers normalise all forms, so source-layer changes upstream don't break the UI.
