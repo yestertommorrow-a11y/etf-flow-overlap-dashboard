@@ -218,19 +218,30 @@ svg[data-charttip]{cursor:crosshair}
     try {
       const s = await getJSON(BASE + 'status.json', 15000);
       if (s._404 || !s || !s.built_at) return;
-      const days = (Date.now() - new Date(s.built_at)) / 864e5;
+      // a build is due by 02:00 UTC after every weekday night — judge lateness against that clock,
+      // not raw age, or a normal weekend reads as "stalled" (no builds Fri night → Mon night)
+      const deadlines = [];
+      for (let i = 0; i < 10; i++) {
+        const d = new Date(Date.now() - i * 864e5); d.setUTCHours(2, 0, 0, 0);
+        const prev = new Date(d); prev.setUTCDate(prev.getUTCDate() - 1);
+        if (prev.getUTCDay() >= 1 && prev.getUTCDay() <= 5) deadlines.push(d.getTime());
+      }
+      const built = new Date(s.built_at).getTime();
+      const missed = deadlines.filter(t => t > built).length;          // deadlines passed without a build
+      const latest = deadlines.find(t => t <= Date.now()) || deadlines[0];
+      const stalled = missed >= 2;                                    // a whole build cycle missed
       const prices = s.data && s.data.prices && s.data.prices.through;
       const files = s.data && s.data.issuer_files && s.data.issuer_files.newest;
       const nport = s.data && s.data.sec_nport && s.data.sec_nport.dataset;
-      const stalled = days >= 3, recent = days < 1.5;
-      const dot = stalled ? 'var(--out)' : recent ? 'var(--in)' : 'var(--mv)';
+      const dot = stalled ? 'var(--out)' : missed ? 'var(--mv)' : 'var(--in)';
       const el = $('freshChip');
       if (el) el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dot};margin-right:6px;vertical-align:middle"></span>` +
-        esc((stalled ? '⚠ build stalled — last successful source build ' : 'source data built ') + s.built_at.slice(0, 16).replace('T', ' ') + ' UTC') +
+        esc((stalled ? '⚠ build stalled — last successful source build ' : missed ? 'source build late — last successful build ' : 'source data built ') + s.built_at.slice(0, 16).replace('T', ' ') + ' UTC') +
+        (missed ? ' · next build ' + (stalled ? 'overdue' : 'due') + ' by 02:00 UTC weekday nights' : '') +
         (files ? ' · holdings files through ' + esc(files) : '') +
         (prices ? ' · prices through ' + esc(prices) : '') +
         (nport ? ' · SEC reports ' + esc(nport) : '') +
-        (stalled ? ' — newer closes are missing upstream; each chart shows where its data ends' : '');
+        (stalled ? ' — newer closes are missing upstream; each chart shows where its data ends' : missed && !stalled ? ' — newer closes usually appear within hours; charts show where their data ends' : '');
     } catch (e) { /* the chip is auxiliary — stay hidden if it cannot load */ }
   })();
 
