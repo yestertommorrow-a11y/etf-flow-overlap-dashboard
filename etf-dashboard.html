@@ -77,6 +77,7 @@ svg[data-charttip]{cursor:crosshair}
 <main>
 <h1>ETF Flow &amp; Overlap Dashboard</h1>
 <p class="sub">Fund flows · 1-vs-1 overlap · sector weights · correlation · holdings change — all from free TickerInside data. <a href="#tab-funds" data-goto="funds">Browse every fund of any issuer</a> · Invesco funds get holdings from SEC Form N-PORT and weight changes from quarterly reports.</p>
+<div id="freshChip" class="msg" style="margin:-12px 0 16px;font-size:.78rem"></div>
 
 <nav class="tabs" role="tablist">
   <button class="tab active" data-tab="flows" role="tab">Fund Flows</button>
@@ -195,6 +196,27 @@ svg[data-charttip]{cursor:crosshair}
   }, { passive: true });
   window.addEventListener('scroll', () => { const t = document.getElementById('tiptool'); if (t) t.classList.remove('on'); }, { passive: true });
   document.addEventListener('mouseleave', () => { const t = document.getElementById('tiptool'); if (t) t.classList.remove('on'); });
+
+  // ---------- data freshness chip: the source's own status, so the page answers "how old is this?" ----------
+  (async () => {
+    try {
+      const s = await getJSON(BASE + 'status.json', 15000);
+      if (s._404 || !s || !s.built_at) return;
+      const days = (Date.now() - new Date(s.built_at)) / 864e5;
+      const prices = s.data && s.data.prices && s.data.prices.through;
+      const files = s.data && s.data.issuer_files && s.data.issuer_files.newest;
+      const nport = s.data && s.data.sec_nport && s.data.sec_nport.dataset;
+      const stalled = days >= 3, recent = days < 1.5;
+      const dot = stalled ? 'var(--out)' : recent ? 'var(--in)' : 'var(--mv)';
+      const el = $('freshChip');
+      if (el) el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dot};margin-right:6px;vertical-align:middle"></span>` +
+        esc((stalled ? '⚠ build stalled — last successful source build ' : 'source data built ') + s.built_at.slice(0, 16).replace('T', ' ') + ' UTC') +
+        (files ? ' · holdings files through ' + esc(files) : '') +
+        (prices ? ' · prices through ' + esc(prices) : '') +
+        (nport ? ' · SEC reports ' + esc(nport) : '') +
+        (stalled ? ' — newer closes are missing upstream; each chart shows where its data ends' : '');
+    } catch (e) { /* the chip is auxiliary — stay hidden if it cannot load */ }
+  })();
 
   // ---------- Pre-lists: sector & industry ETF groups, as optgroups in a dropdown ----------
   const PRESETS = [
