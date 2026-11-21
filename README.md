@@ -9,6 +9,8 @@ A single-file, browser-only dashboard that answers the questions I kept asking w
 > **Data:** [TickerInside](https://tickerinside.com) — free, no-key, CORS-open, CC BY 4.0, holdings read from issuers' own daily files and SEC Form N-PORT filings. Volatility estimators need daily OHLC, which TickerInside does not publish; that tab loads a published Yahoo Finance CSV for whatever ticker you type (SOXL/SOXX ship with the page), takes any Yahoo-format CSV, or reads a snapshot built with the [volatility-trading](https://github.com/jasonstrimpel/volatility-trading) library.
 > **Not investment advice.** A transparency tool.
 
+For commands, links, test scripts and refresh/deploy steps, see **[RUNBOOK.md](RUNBOOK.md)**.
+
 <!-- Put screenshots in docs/screenshots/ and uncomment:
 | Flows | Overlap |
 |---|---|
