@@ -103,6 +103,17 @@ if (fs.existsSync(path.join(root, 'SOXL-ohlc.csv')) && fs.existsSync(path.join(r
   document.getElementById('volFund').value = 'ZZZZ';
   await document.getElementById('volRepo').onclick();
   ok(out.innerHTML.includes('No published ZZZZ') && out.innerHTML.includes('class="err"'), 'unknown ticker shows a helpful error');
+  // JPM vs SPY are published too — the ticker the user asked for
+  if (fs.existsSync(path.join(root, 'JPM-ohlc.csv')) && fs.existsSync(path.join(root, 'SPY-ohlc.csv'))) {
+    document.getElementById('volFund').value = 'jpm';
+    document.getElementById('volBench').value = 'spy';
+    await document.getElementById('volRepo').onclick();
+    ok(out.innerHTML.includes('JPM · '), 'button loads JPM fund CSV');
+    ok(out.innerHTML.includes('SPY'), 'button loads SPY benchmark CSV');
+    ok(!out.innerHTML.includes('class="err"'), 'JPM/SPY render has no error block');
+  } else {
+    console.log('skip  JPM/SPY CSVs not present');
+  }
 } else {
   console.log('skip  published CSVs not present');
 }

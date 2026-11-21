@@ -30,7 +30,7 @@ block `fetch()` on `file://` pages. The file pickers still work offline.
 | Purpose | File |
 |---|---|
 | The dashboard (single HTML file) | `index.html` |
-| Published daily prices for the one-click button | `SOXL-ohlc.csv`, `SOXX-ohlc.csv` |
+| Published daily prices for the one-click button | `SOXL-ohlc.csv`, `SOXX-ohlc.csv`, `JPM-ohlc.csv`, `SPY-ohlc.csv` |
 | Demo snapshot (JPM vs SPY, Python-library output) | `volatility-snapshot-demo.json` |
 | Fetch/refresh daily OHLC from Yahoo, no key | `tools/yahoo-ohlc-csv.mjs` |
 | Python-library snapshot builder | `tools/vol_snapshot.py` |
@@ -47,7 +47,7 @@ node tools/vol_render_test.mjs     # DOM-stub render + button paths
 node tools/vol_parity_check.mjs    # browser JS vs Python library
 ```
 
-Last known results: 22/22, 27/27 and 32 series with 0 failures
+Last known results: 22/22, 30/30 and 32 series with 0 failures
 (tolerance 0.00005).
 
 ## Refresh the published OHLC CSVs
@@ -56,6 +56,8 @@ Last known results: 22/22, 27/27 and 32 series with 0 failures
 cd C:\Projects\fintools\etf-dashboard
 node tools/yahoo-ohlc-csv.mjs SOXL SOXL-ohlc.csv
 node tools/yahoo-ohlc-csv.mjs SOXX SOXX-ohlc.csv
+node tools/yahoo-ohlc-csv.mjs JPM JPM-ohlc.csv
+node tools/yahoo-ohlc-csv.mjs SPY SPY-ohlc.csv
 ```
 
 The helper reads Yahoo's public `v8/finance/chart` JSON (no key, no login) and
