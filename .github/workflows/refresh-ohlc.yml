@@ -1,0 +1,36 @@
+name: Refresh published OHLC CSVs
+
+# Yahoo blocks browser-side fetches (no CORS, login-gated CSV downloads), so the
+# Volatility tab loads these CSVs from the page's own folder. This free workflow
+# refreshes them after the US close; no API key or account is needed.
+on:
+  schedule:
+    - cron: '30 3 * * 2-6'   # 03:30 UTC Tue–Sat, after the US session closes
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Fetch daily OHLC from Yahoo Finance
+        run: |
+          node tools/yahoo-ohlc-csv.mjs SOXL SOXL-ohlc.csv
+          node tools/yahoo-ohlc-csv.mjs SOXX SOXX-ohlc.csv
+      - name: Commit when the prices changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SOXL-ohlc.csv SOXX-ohlc.csv
+          if git diff --cached --quiet; then
+            echo "No new closes yet."
+          else
+            git commit -m "Refresh published OHLC CSVs (SOXL, SOXX)"
+            git push
+          fi

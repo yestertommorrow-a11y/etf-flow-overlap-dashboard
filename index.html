@@ -187,14 +187,16 @@ svg[data-charttip]{cursor:crosshair}
   <div class="row">
     <div><label for="volSnap">…or a snapshot built by tools/vol_snapshot.py</label><input type="file" id="volSnap" accept=".json,application/json"></div>
     <button id="volDemo">Load demo snapshot</button>
+    <button id="volRepo">Load latest SOXL + SOXX</button>
   </div>
-  <p class="msg">TickerInside publishes weekly returns, not daily OHLC — so this tab takes prices directly: a daily <b>Yahoo Finance CSV</b> (Date, Open, High, Low, Close, Adj Close) for the fund and, optionally, a benchmark. The estimators run here in the browser. The <code>tools/vol_snapshot.py</code> helper instead runs the real <a href="https://github.com/jasonstrimpel/volatility-trading" target="_blank" rel="noopener">volatility-trading</a> library and writes a JSON snapshot this tab loads unchanged, so Python numbers and browser numbers sit in the same view.</p>
+  <p class="msg">TickerInside publishes weekly returns, not daily OHLC — so this tab takes prices directly: a daily <b>Yahoo Finance CSV</b> (Date, Open, High, Low, Close, Adj Close) for the fund and, optionally, a benchmark. <b>Load latest SOXL + SOXX</b> fetches the published CSVs next to this page in one click — no file picker; they refresh daily after the US close, so they are only as fresh as the last refresh. Browsers cannot fetch Yahoo directly (CORS), which is why the CSVs are published here. The estimators run here in the browser. The <code>tools/vol_snapshot.py</code> helper instead runs the real <a href="https://github.com/jasonstrimpel/volatility-trading" target="_blank" rel="noopener">volatility-trading</a> library and writes a JSON snapshot this tab loads unchanged, so Python numbers and browser numbers sit in the same view.</p>
   <div id="volOut"></div>
 </section>
 
 <details style="margin:14px 0 0"><summary class="msg" style="cursor:pointer">What's new</summary>
   <div class="msg" style="margin-top:8px;line-height:1.7">
-    <b>Nov 21, 2026</b> — the freshness chip now separates two different failures: a <b>late nightly build</b> (no new files arriving) from a <b>stalled flows layer</b> (issuer files keep arriving but the publisher's flow calculation stops advancing). It names which one you are seeing, with the dates behind it, and when flows stall it also counts how many fund files are stuck on that date — all from the source's own status numbers, instead of lumping both into "delayed".
+    <b>Nov 21, 2026</b> — volatility tab: <b>Load latest SOXL + SOXX</b> fetches published daily OHLC CSVs from this page's own folder in one click — no file picker. Yahoo blocks direct browser requests (no CORS, login-gated downloads), so a free scheduled workflow refreshes the files after the US close; the page always says where the prices came from and how fresh they are. Manual CSV upload and <code>tools/vol_snapshot.py</code> snapshots still work as before.
+    <br><b>Nov 21, 2026</b> — the freshness chip now separates two different failures: a <b>late nightly build</b> (no new files arriving) from a <b>stalled flows layer</b> (issuer files keep arriving but the publisher's flow calculation stops advancing). It names which one you are seeing, with the dates behind it, and when flows stall it also counts how many fund files are stuck on that date — all from the source's own status numbers, instead of lumping both into "delayed".
     <br><b>Nov 17, 2026</b> — volatility tab: Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang, Hodges-Tompkins, close-to-close, skew and kurtosis with cones, rolling quantiles/extremes/descriptives, distribution, benchmark ratio, rolling correlation and an OLS comparison. Reads Yahoo/any daily OHLC CSV, or a snapshot precomputed by the cloned <code>volatility-trading</code> library via <code>tools/vol_snapshot.py</code>.
     <br><b>Nov 17, 2026</b> — freshness chip: the title area now shows when the source data was last built and through which dates it runs, turning amber/red when the upstream nightly build runs late or stalls. When a delay happens, the chip relays the publisher's own stated cause from their incident log and links to their status page — the dashboard never guesses.
     <br><b>Nov 8, 2026</b> — Fund Browser (every fund of any issuer — all 238 Invesco funds one click from comparison) · Holdings Change works for SEC-filed funds via quarterly reports (QQQ, RSP…) · one-request batch loads · grouped Pre-list dropdowns on all four ticker tabs · instant chart tooltips, crosshair cursors and hover polish.
@@ -1062,6 +1064,7 @@ const fbState = { items: [], issuer: '', as_of: '', tried: false };
   // <<< volatility formulas
 
   const volState = { fund: null, bench: null, mode: '', generated: '', tp: 252 };
+  let volLoadSeq = 0;   // newest load wins: the tab's auto-demo must not overwrite a later click
   const volLabelOf = n => (VOL_ESTIMATORS.find(x => x[0] === n) || [, n])[1];
   const volFmt = (name, v) => v == null || !Number.isFinite(v) ? '—' : VOL_NONVOL.has(name) ? v.toFixed(2) : (v * 100).toFixed(2) + '%';
   const volFile = id => { const el = $(id); return el && el.files && el.files[0] ? el.files[0] : null; };
@@ -1152,7 +1155,15 @@ const fbState = { items: [], issuer: '', as_of: '', tried: false };
   }
   volEstimatorOptions(false);
 
+  function setVolCsv(rows, label, brows, blabel) {
+    volState.fund = { ticker: label || 'FUND', rows, est: {}, source: 'csv' };
+    volState.bench = brows ? { ticker: blabel || 'BENCH', rows: brows, est: {}, source: 'csv' } : null;
+    volState.mode = 'csv'; volState.generated = ''; volState.tp = 252;
+    volEstimatorOptions(rows.partial);
+  }
+
   async function loadVol() {
+    const seq = ++volLoadSeq;
     const out = $('volOut'), snapF = volFile('volSnap'), fundF = volFile('volFundCsv');
     if (!snapF && !fundF) { out.innerHTML = '<p class="msg">Pick a fund OHLC CSV or a snapshot JSON — or press <b>Load demo snapshot</b> to see the tab with prices that ship with the project.</p>'; return; }
     out.innerHTML = '<p class="msg">Reading prices…</p>';
@@ -1165,32 +1176,54 @@ const fbState = { items: [], issuer: '', as_of: '', tried: false };
     } else {
       const rows = parseOhlc(await fundF.text(), fundF.name);
       const label = ($('volFund').value || fundF.name.replace(/\.[^.]+$/, '')).trim().toUpperCase();
-      volState.fund = { ticker: label || 'FUND', rows, est: {}, source: 'csv' };
       const benchF = volFile('volBenchCsv');
-      volState.bench = null;
+      let brows = null, blabel = '';
       if (benchF) {
-        const brows = parseOhlc(await benchF.text(), benchF.name);
-        const blabel = ($('volBench').value || benchF.name.replace(/\.[^.]+$/, '')).trim().toUpperCase();
-        volState.bench = { ticker: blabel || 'BENCH', rows: brows, est: {}, source: 'csv' };
+        brows = parseOhlc(await benchF.text(), benchF.name);
+        blabel = ($('volBench').value || benchF.name.replace(/\.[^.]+$/, '')).trim().toUpperCase();
       }
-      volState.mode = 'csv'; volState.generated = ''; volState.tp = 252;
-      volEstimatorOptions(rows.partial);
+      setVolCsv(rows, label, brows, blabel);
     }
+    if (seq === volLoadSeq) renderVol();
+  }
+
+  // One-click path: the CSVs are served from this page's own folder, so it works
+  // without a file picker. Yahoo itself cannot be called from a browser (no CORS).
+  async function loadVolRepo() {
+    const seq = ++volLoadSeq;
+    const out = $('volOut');
+    out.innerHTML = '<p class="msg">Fetching published daily prices…</p>';
+    const pairs = [['SOXL', 'SOXL-ohlc.csv'], ['SOXX', 'SOXX-ohlc.csv']];
+    const got = await Promise.all(pairs.map(async ([ticker, file]) => {
+      let r;
+      try { r = await fetch(file, { headers: { Accept: 'text/csv' } }); }
+      catch (e) { throw new Error('Cannot read ' + file + ' — open this page over HTTP (GitHub Pages or python -m http.server), not file://'); }
+      if (!r.ok) throw new Error(file + ' → HTTP ' + r.status + ' — refresh the published CSVs or pick a local file');
+      return { ticker, rows: parseOhlc(await r.text(), file) };
+    }));
+    if (seq !== volLoadSeq) return;
+    $('volFund').value = got[0].ticker;
+    $('volBench').value = got[1].ticker;
+    $('volFundCsv').value = ''; $('volBenchCsv').value = ''; $('volSnap').value = '';
+    setVolCsv(got[0].rows, got[0].ticker, got[1].rows, got[1].ticker);
     renderVol();
   }
 
   async function loadVolDemo(silent) {
+    const seq = ++volLoadSeq;
     const out = $('volOut');
     try {
       const r = await fetch('volatility-snapshot-demo.json', { headers: { Accept: 'application/json' } });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const snap = parseSnapshot(await r.json(), 'volatility-snapshot-demo.json');
+      if (seq !== volLoadSeq) return;
       volState.fund = snap.fund; volState.bench = snap.bench; volState.tp = snap.tp; volState.mode = 'snapshot'; volState.generated = snap.generated;
       $('volFund').value = snap.fund.ticker;
       if (snap.bench) $('volBench').value = snap.bench.ticker;
       volEstimatorOptions(false);
       renderVol();
     } catch (e) {
+      if (seq !== volLoadSeq) return;
       if (silent) {
         out.innerHTML = '<p class="msg">Pick a fund OHLC CSV or a snapshot JSON above — the demo file loads automatically when this page is served over HTTP, but browsers block <code>fetch</code> on <code>file://</code> pages. <code>volatility-snapshot-demo.json</code> sits next to this HTML and can be selected with the snapshot input.</p>';
         return;
@@ -1433,6 +1466,7 @@ const fbState = { items: [], issuer: '', as_of: '', tried: false };
   $('fbRun').onclick = safe(runFunds, 'fbOut');
   $('volRun').onclick = safe(loadVol, 'volOut');
   $('volDemo').onclick = safe(loadVolDemo, 'volOut');
+  $('volRepo').onclick = safe(loadVolRepo, 'volOut');
   $('volFundCsv').onchange = () => { $('volSnap').value = ''; };
   $('volBenchCsv').onchange = () => { $('volSnap').value = ''; };
   $('volSnap').onchange = () => { $('volFundCsv').value = ''; $('volBenchCsv').value = ''; };

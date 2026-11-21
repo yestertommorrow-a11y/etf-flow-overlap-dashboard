@@ -15,7 +15,9 @@ API terms: <https://tickerinside.com/api/sections/terms.md>
 
 ## Volatility prices and methods
 
-The Volatility tab does **not** use TickerInside data. Prices are supplied by the user: a daily OHLC CSV (Yahoo Finance format, downloaded by the user), or a snapshot produced by `tools/vol_snapshot.py`.
+The Volatility tab does **not** use TickerInside data. Prices come from daily Yahoo Finance OHLC, either as the published CSVs next to this page (`SOXL-ohlc.csv`, `SOXX-ohlc.csv`, loaded by the **Load latest SOXL + SOXX** button), a daily OHLC CSV the user picks, or a snapshot produced by `tools/vol_snapshot.py`.
+
+- Published CSVs: daily prices from [Yahoo Finance](https://finance.yahoo.com/quote/SOXL/history/) via its public `v8/finance/chart` endpoint, converted by `tools/yahoo-ohlc-csv.mjs` (`Date,Open,High,Low,Close,Adj Close,Volume`). The prices belong to Yahoo Finance / its exchanges and are included for personal use only; the dashboard credits the source in the tab.
 
 - Estimator formulas: Euan Sinclair, *Volatility Trading* (Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang, Hodges-Tompkins, close-to-close, skew, kurtosis).
 - Reference implementation mirrored by the browser port and imported by the snapshot builder: [jasonstrimpel/volatility-trading](https://github.com/jasonstrimpel/volatility-trading), **GPL-3.0**. The package is an optional dependency and is not redistributed in this repository; the browser code is an independent implementation of the published formulas.

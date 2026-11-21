@@ -40,6 +40,12 @@ const window = { addEventListener() {}, innerWidth: 1200, innerHeight: 800 };
 
 const fetchStub = async url => {
   const u = String(url);
+  const pub = u.match(/(SOXL|SOXX)-ohlc\.csv/);
+  if (pub) {
+    const p = path.join(root, pub[0]);
+    if (!fs.existsSync(p)) return { ok: false, status: 404, text: async () => '' };
+    return { ok: true, status: 200, text: async () => fs.readFileSync(p, 'utf8') };
+  }
   if (u.includes('volatility-snapshot-demo.json')) {
     if (!demo) return { ok: false, status: 404, json: async () => ({}) };
     return { ok: true, status: 200, json: async () => demo };
@@ -70,6 +76,21 @@ if (demo) {
   ok(out.innerHTML.includes('YangZhang') || out.innerHTML.includes('Yang-Zhang'), 'Yang-Zhang label present');
   document.getElementById('volEstimator').value = 'GarmanKlass';
   await document.getElementById('volEstimator').onchange();
+}
+
+// published CSVs: the one-click button reads both files from the page's folder
+ok(typeof document.getElementById('volRepo').onclick === 'function', 'published CSV button bound');
+document.getElementById('volSnap').files = [];
+document.getElementById('volFundCsv').files = [];
+document.getElementById('volBenchCsv').files = [];
+if (fs.existsSync(path.join(root, 'SOXL-ohlc.csv')) && fs.existsSync(path.join(root, 'SOXX-ohlc.csv'))) {
+  await document.getElementById('volRepo').onclick();
+  ok(out.innerHTML.includes('SOXL · '), 'published CSV button loads SOXL');
+  ok(out.innerHTML.includes('SOXX'), 'published CSV button loads SOXX benchmark');
+  ok(out.innerHTML.includes('computed in the browser'), 'published CSVs compute in browser');
+  ok(!out.innerHTML.includes('class="err"'), 'published CSV render has no error block');
+} else {
+  console.log('skip  published CSVs not present');
 }
 
 // CSV path: both files, no snapshot
