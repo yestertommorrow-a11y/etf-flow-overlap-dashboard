@@ -6,7 +6,7 @@ Free single-file ETF dashboard: fund flows, overlap, sector mix, correlation, ho
 
 A single-file, browser-only dashboard that answers the questions I kept asking when comparing US ETFs — fund flows, true holdings overlap, sector mix, return correlation, what funds actually changed, and how volatile each one really is. It runs entirely client-side and reads a key-free open API, so you can open the file from anywhere (disk, USB, GitHub Pages) and it just works.
 
-> **Data:** [TickerInside](https://tickerinside.com) — free, no-key, CORS-open, CC BY 4.0, holdings read from issuers' own daily files and SEC Form N-PORT filings. Volatility estimators need daily OHLC, which TickerInside does not publish; that tab loads published Yahoo Finance CSVs (SOXL/SOXX) in one click, takes any Yahoo-format CSV, or reads a snapshot built with the [volatility-trading](https://github.com/jasonstrimpel/volatility-trading) library.
+> **Data:** [TickerInside](https://tickerinside.com) — free, no-key, CORS-open, CC BY 4.0, holdings read from issuers' own daily files and SEC Form N-PORT filings. Volatility estimators need daily OHLC, which TickerInside does not publish; that tab loads a published Yahoo Finance CSV for whatever ticker you type (SOXL/SOXX ship with the page), takes any Yahoo-format CSV, or reads a snapshot built with the [volatility-trading](https://github.com/jasonstrimpel/volatility-trading) library.
 > **Not investment advice.** A transparency tool.
 
 <!-- Put screenshots in docs/screenshots/ and uncomment:
@@ -23,7 +23,7 @@ A single-file, browser-only dashboard that answers the questions I kept asking w
 2. Double-click it (any modern browser)
 3. Start from the pre-filled examples, or open the **Fund Browser** tab to pick any of the 238 Invesco funds (or iShares, Vanguard, SPDR…)
 
-The **Volatility** tab ships with a one-click demo (`volatility-snapshot-demo.json`: JPM vs SPY, the last three years of Yahoo Finance daily prices, run through the Python library) and a **Load latest SOXL + SOXX** button that reads published daily OHLC CSVs from this folder — no file picker, no key. To use your own prices, download a daily CSV from finance.yahoo.com and pick it in the tab — or build a snapshot with the Python helper below.
+The **Volatility** tab ships with a one-click demo (`volatility-snapshot-demo.json`: JPM vs SPY, the last three years of Yahoo Finance daily prices, run through the Python library) and a **Load latest prices** button that reads the published daily OHLC CSV matching whatever you type in the Fund / Benchmark boxes (SOXL / SOXX by default) — no file picker, no key. To use your own prices, download a daily CSV from finance.yahoo.com and pick it in the tab — or build a snapshot with the Python helper below.
 
 Optional, nicer: publish it once and share a URL —
 
@@ -67,7 +67,7 @@ Diffs between consecutive official files: entered / exited / moved, names turnov
 ### 📉 Volatility — "how much does it actually move?"
 Sinclair's OHLC estimators — **Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang, Hodges-Tompkins**, close-to-close, skew and kurtosis — with volatility cones, rolling quantiles, rolling extremes, rolling mean/σ/z-score, the distribution against a normal curve, ratio and rolling correlation against a benchmark, and a through-the-origin OLS (the same `sm.OLS(y, X)` model `volest` uses).
 
-Prices are yours: press **Load latest SOXL + SOXX** for the published daily CSVs (refreshed after the US close), drop in any other daily CSV (Yahoo format; Adj Close is applied consistently to Open/High/Low), or load a snapshot precomputed by the cloned Python library. A provenance line states which one produced the numbers, and every chart still exports CSV.
+Prices are yours: type a ticker (and optional benchmark) and press **Load latest prices** for the matching published daily CSV, drop in any other daily CSV (Yahoo format; Adj Close is applied consistently to Open/High/Low), or load a snapshot precomputed by the cloned Python library. A provenance line states which one produced the numbers, and every chart still exports CSV.
 
 **Why a published copy instead of fetching Yahoo in the tab?** Yahoo sends no `Access-Control-Allow-Origin` header and its CSV download URL needs a login, so a browser-only page cannot call it directly. `SOXL-ohlc.csv` and `SOXX-ohlc.csv` are fetched from this page's own folder; a free scheduled GitHub Action refreshes them after the US close (and can be triggered manually from the Actions tab). The button is only as fresh as the last refresh, and the page says so.
 
@@ -102,14 +102,14 @@ Static files carry `ETag` + `Cache-Control: public, max-age=300`, so repeat view
 
 ### Published daily OHLC (one-click, no key)
 
-`SOXL-ohlc.csv` and `SOXX-ohlc.csv` sit next to `index.html`, in the exact shape the tab reads (`Date,Open,High,Low,Close,Adj Close,Volume`). Press **Load latest SOXL + SOXX** to compute from them immediately. Refresh them yourself, or let the free workflow do it daily:
+`SOXL-ohlc.csv` and `SOXX-ohlc.csv` sit next to `index.html`, in the exact shape the tab reads (`Date,Open,High,Low,Close,Adj Close,Volume`). Type `SOXL` / `SOXX` and press **Load latest prices** to compute from them immediately. Refresh them yourself, or let the free workflow do it daily:
 
 ```sh
 node tools/yahoo-ohlc-csv.mjs SOXL SOXL-ohlc.csv
 node tools/yahoo-ohlc-csv.mjs SOXX SOXX-ohlc.csv
 ```
 
-The helper reads Yahoo's public `v8/finance/chart` JSON (no key, no login), converts it to daily OHLC with dividend-adjusted O/H/L, and writes the CSV. `.github/workflows/refresh-ohlc.yml` runs the same commands at 03:30 UTC Tue–Sat and on **workflow_dispatch**. For other tickers, run the helper with a different name and add the pair to the button's list in `index.html` (`loadVolRepo`).
+The helper reads Yahoo's public `v8/finance/chart` JSON (no key, no login), converts it to daily OHLC with dividend-adjusted O/H/L, and writes the CSV. `.github/workflows/refresh-ohlc.yml` runs the same commands at 03:30 UTC Tue–Sat and on **workflow_dispatch**. For other tickers, generate `<TICKER>-ohlc.csv` with the helper, commit it next to `index.html`, add a refresh line to the workflow — and the button will pick it up as soon as you type that ticker. (Optionally update `VOL_PUBLISHED` in `index.html` so the "not published" error lists it too.)
 
 ### Volatility snapshot (optional, Python)
 
@@ -168,7 +168,7 @@ The demo is *not* built from the library's own `tests/JPM.csv`: in that file `Cl
 
 **"Why not iShares/SPDR/Invesco's own CSV downloads?"** They block non-browser clients (HTTP 406) and send no CORS headers, so a browser-only page physically cannot read them without a server — which the "one file, no backend" design excludes by design.
 
-**"Where do the volatility tab's prices come from?"** Daily Yahoo Finance OHLC, served as two published CSVs (`SOXL-ohlc.csv`, `SOXX-ohlc.csv`, refreshed daily by a no-key workflow) for the one-click button; or any daily Yahoo-format CSV you pick yourself; or a snapshot built by `tools/vol_snapshot.py` with the volatility-trading library. Yahoo blocks direct browser fetches (no CORS), which is why the CSVs are published here. TickerInside has no daily OHLC, so the tab says that up front rather than substituting weekly returns.
+**"Where do the volatility tab's prices come from?"** Daily Yahoo Finance OHLC, served as published CSVs (`SOXL-ohlc.csv`, `SOXX-ohlc.csv`, refreshed daily by a no-key workflow) for the one-click button — it reads the ticker you type in the Fund box and the Benchmark box; or any daily Yahoo-format CSV you pick yourself; or a snapshot built by `tools/vol_snapshot.py` with the volatility-trading library. Yahoo blocks direct browser fetches (no CORS), which is why the CSVs are published here. TickerInside has no daily OHLC, so the tab says that up front rather than substituting weekly returns.
 
 **"Why does Hodges-Tompkins not match the textbook formula?"** Because `volatility-trading` computes `log_return.count()` once for the whole series, making its finite-sample correction a constant rather than a rolling adjustment. The browser port mirrors the library exactly — that is what the parity test proves — and the tab labels the behaviour rather than pretending otherwise. If you want the rolling correction, change both the Python model and the JS block together; the parity check will tell you if they diverge.
 

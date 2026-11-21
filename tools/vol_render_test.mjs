@@ -15,7 +15,7 @@ const demo = fs.existsSync(demoPath) ? JSON.parse(fs.readFileSync(demoPath, 'utf
 
 const defaults = {
   volEstimator: 'GarmanKlass', volWindow: '30', volWindows: '30, 60, 90, 120',
-  volQLo: '0.25', volQHi: '0.75', volFund: 'JPM', volBench: 'SPY',
+  volQLo: '0.25', volQHi: '0.75', volFund: 'SOXL', volBench: 'SOXX',
   flowTickers: '', corrTickers: '', chgTickers: '', ovA: '', ovB: '', secA: '', secB: ''
 };
 const els = new Map();
@@ -40,7 +40,7 @@ const window = { addEventListener() {}, innerWidth: 1200, innerHeight: 800 };
 
 const fetchStub = async url => {
   const u = String(url);
-  const pub = u.match(/(SOXL|SOXX)-ohlc\.csv/);
+  const pub = u.match(/([A-Za-z0-9.\-]+)-ohlc\.csv/);
   if (pub) {
     const p = path.join(root, pub[0]);
     if (!fs.existsSync(p)) return { ok: false, status: 404, text: async () => '' };
@@ -78,17 +78,31 @@ if (demo) {
   await document.getElementById('volEstimator').onchange();
 }
 
-// published CSVs: the one-click button reads both files from the page's folder
+// published CSVs: the button follows whatever the user typed in the ticker boxes
 ok(typeof document.getElementById('volRepo').onclick === 'function', 'published CSV button bound');
 document.getElementById('volSnap').files = [];
 document.getElementById('volFundCsv').files = [];
 document.getElementById('volBenchCsv').files = [];
 if (fs.existsSync(path.join(root, 'SOXL-ohlc.csv')) && fs.existsSync(path.join(root, 'SOXX-ohlc.csv'))) {
+  document.getElementById('volFund').value = ' soxl ';
+  document.getElementById('volBench').value = ' soxx ';
   await document.getElementById('volRepo').onclick();
-  ok(out.innerHTML.includes('SOXL · '), 'published CSV button loads SOXL');
-  ok(out.innerHTML.includes('SOXX'), 'published CSV button loads SOXX benchmark');
+  ok(out.innerHTML.includes('SOXL · '), 'button loads the fund ticker typed by the user');
+  ok(out.innerHTML.includes('SOXX'), 'button loads the benchmark ticker typed by the user');
+  ok(document.getElementById('volFund').value === 'SOXL', 'typed ticker is normalized (case/space)');
   ok(out.innerHTML.includes('computed in the browser'), 'published CSVs compute in browser');
   ok(!out.innerHTML.includes('class="err"'), 'published CSV render has no error block');
+
+  // benchmark is optional: clearing the box loads only the fund
+  document.getElementById('volBench').value = '';
+  await document.getElementById('volRepo').onclick();
+  ok(out.innerHTML.includes('SOXL · ') && !out.innerHTML.includes('vs SOXX'), 'empty benchmark loads fund only');
+  ok(!out.innerHTML.includes('class="err"'), 'fund-only render has no error block');
+
+  // an un-published ticker is a clear error, not a blank panel
+  document.getElementById('volFund').value = 'ZZZZ';
+  await document.getElementById('volRepo').onclick();
+  ok(out.innerHTML.includes('No published ZZZZ') && out.innerHTML.includes('class="err"'), 'unknown ticker shows a helpful error');
 } else {
   console.log('skip  published CSVs not present');
 }
