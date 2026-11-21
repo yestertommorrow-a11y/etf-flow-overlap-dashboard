@@ -194,7 +194,7 @@ svg[data-charttip]{cursor:crosshair}
 
 <details style="margin:14px 0 0"><summary class="msg" style="cursor:pointer">What's new</summary>
   <div class="msg" style="margin-top:8px;line-height:1.7">
-    <b>Nov 21, 2026</b> — the freshness chip now separates two different failures: a <b>late nightly build</b> (no new files arriving) from a <b>stalled flows layer</b> (issuer files keep arriving but the publisher's flow calculation stops advancing). It names which one you are seeing, with the dates behind it, instead of lumping both into "delayed".
+    <b>Nov 21, 2026</b> — the freshness chip now separates two different failures: a <b>late nightly build</b> (no new files arriving) from a <b>stalled flows layer</b> (issuer files keep arriving but the publisher's flow calculation stops advancing). It names which one you are seeing, with the dates behind it, and when flows stall it also counts how many fund files are stuck on that date — all from the source's own status numbers, instead of lumping both into "delayed".
     <br><b>Nov 17, 2026</b> — volatility tab: Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang, Hodges-Tompkins, close-to-close, skew and kurtosis with cones, rolling quantiles/extremes/descriptives, distribution, benchmark ratio, rolling correlation and an OLS comparison. Reads Yahoo/any daily OHLC CSV, or a snapshot precomputed by the cloned <code>volatility-trading</code> library via <code>tools/vol_snapshot.py</code>.
     <br><b>Nov 17, 2026</b> — freshness chip: the title area now shows when the source data was last built and through which dates it runs, turning amber/red when the upstream nightly build runs late or stalls. When a delay happens, the chip relays the publisher's own stated cause from their incident log and links to their status page — the dashboard never guesses.
     <br><b>Nov 8, 2026</b> — Fund Browser (every fund of any issuer — all 238 Invesco funds one click from comparison) · Holdings Change works for SEC-filed funds via quarterly reports (QQQ, RSP…) · one-request batch loads · grouped Pre-list dropdowns on all four ticker tabs · instant chart tooltips, crosshair cursors and hover polish.
@@ -283,7 +283,11 @@ svg[data-charttip]{cursor:crosshair}
         if (fl && !fl._404 && fl.date && fl.newest_file) {
           const sess = (a, b) => { let n = 0; const d = new Date(a + 'T00:00:00Z'), e = new Date(b + 'T00:00:00Z'); while (d < e) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w >= 1 && w <= 5) n++; } return n; };
           const gap = sess(fl.date, fl.newest_file);
-          if (gap > 2) flowFrozen = { flows: fl.date, files: fl.newest_file, gap };
+          // how many funds' own holdings files still end on that flow day — the missing input behind it, not a guess
+          const byDate = s.data && s.data.issuer_files && s.data.issuer_files.by_date;
+          const stuck = Array.isArray(byDate) ? byDate.filter(x => x && x.date === fl.date).reduce((a, x) => a + (Number(x.funds) || 0), 0) : 0;
+          const total = s.data && s.data.issuer_files && s.data.issuer_files.funds;
+          if (gap > 2) flowFrozen = { flows: fl.date, files: fl.newest_file, gap, stuck, total };
         }
       } catch (e3) { /* optional — the chip works without it */ }
       const dot = stalled ? 'var(--out)' : (missed || flowFrozen) ? 'var(--mv)' : 'var(--in)';
@@ -293,10 +297,12 @@ svg[data-charttip]{cursor:crosshair}
       else tail = '';
       if ((stalled || missed) && upInc) tail = ' — the publisher reports: ' + causeOf(upInc) + (upInc.started ? ' (open since ' + esc(upInc.started.slice(0, 10)) + ' UTC)' : '') + '; each chart shows where its data ends';
       // a frozen flows layer outranks the build-lateness wording: the files ARE current, the flow maths is not
-      if (flowFrozen) tail = ' — flows have not advanced since ' + esc(flowFrozen.flows) + ' although issuer files reach ' + esc(flowFrozen.files) + ' (' + flowFrozen.gap + ' sessions): the publisher\'s flow build has stopped while the nightly file build kept running — holdings and prices above are current';
+      if (flowFrozen) tail = ' — flows have not advanced since ' + esc(flowFrozen.flows) + ' although issuer files reach ' + esc(flowFrozen.files) + ' (' + flowFrozen.gap + ' sessions)'
+        + (flowFrozen.stuck ? ', and ' + flowFrozen.stuck + ' of ' + esc(flowFrozen.total || '?') + ' fund files also end at ' + esc(flowFrozen.flows) : '')
+        + ': the publisher has not published a newer flow day — holdings and prices above are current';
       const label = stalled ? '⚠ build stalled — last successful source build '
-        : missed ? 'source build late — last successful build '
         : flowFrozen ? 'flows stalled — last source build '
+        : missed ? 'source build late — last successful build '
         : 'source data built ';
       const el = $('freshChip');
       if (el) el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dot};margin-right:6px;vertical-align:middle"></span>` +
