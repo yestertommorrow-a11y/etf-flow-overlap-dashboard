@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ETF Flow & Overlap Dashboard</title>
-<meta name="description" content="Free single-file ETF dashboard: fund flows, overlap, sector mix, correlation and holdings changes — no install, no API key, no server. Open data from TickerInside (CC BY 4.0).">
+<meta name="description" content="Free single-file ETF dashboard: fund flows, overlap, sector mix, correlation, holdings changes and Sinclair volatility estimators — no install, no API key, no server. Open data from TickerInside (CC BY 4.0) plus your own OHLC prices.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://yestertommorrow-a11y.github.io/etf-flow-overlap-dashboard/">
 <meta property="og:title" content="ETF Flow & Overlap Dashboard">
-<meta property="og:description" content="Fund flows, 1-vs-1 overlap, sector mix, correlation and holdings changes — one HTML file, free open data, runs in your browser.">
+<meta property="og:description" content="Fund flows, 1-vs-1 overlap, sector mix, correlation, holdings changes and volatility estimators — one HTML file, free open data, runs in your browser.">
 <meta property="og:image" content="https://yestertommorrow-a11y.github.io/etf-flow-overlap-dashboard/docs/preview.png">
 <meta property="og:image:width" content="1120">
 <meta property="og:image:height" content="838">
@@ -30,6 +30,8 @@ h1{font-size:1.45rem;margin:0 0 4px}
 label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:3px}
 input[type=text],input[type=date],input[type=number],select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 10px}
 input[type=text]{width:110px;text-transform:uppercase}
+input[type=file]{font:inherit;font-size:.78rem;color:var(--muted);max-width:240px;border:1px dashed var(--line);border-radius:6px;padding:5px 8px;background:var(--bg)}
+input[type=file]::file-selector-button{font:inherit;font-size:.78rem;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:4px;padding:3px 8px;margin-right:8px;cursor:pointer}
 input[type=text].wide{width:220px}
 select{min-width:120px}
 button{font:inherit;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;cursor:pointer;font-size:.88rem}
@@ -86,7 +88,7 @@ svg[data-charttip]{cursor:crosshair}
 <body>
 <main>
 <h1>ETF Flow &amp; Overlap Dashboard</h1>
-<p class="sub">Fund flows · 1-vs-1 overlap · sector weights · correlation · holdings change — all from free TickerInside data. <a href="#tab-funds" data-goto="funds">Browse every fund of any issuer</a> · Invesco funds get holdings from SEC Form N-PORT and weight changes from quarterly reports.</p>
+<p class="sub">Fund flows · 1-vs-1 overlap · sector weights · correlation · holdings change — from free TickerInside data — plus Sinclair volatility estimators from daily OHLC. <a href="#tab-funds" data-goto="funds">Browse every fund of any issuer</a> · Invesco funds get holdings from SEC Form N-PORT and weight changes from quarterly reports.</p>
 <div id="freshChip" class="msg" style="margin:-12px 0 16px;font-size:.78rem"></div>
 
 <nav class="tabs" role="tablist">
@@ -96,6 +98,7 @@ svg[data-charttip]{cursor:crosshair}
   <button class="tab" data-tab="corr" role="tab">Correlation</button>
   <button class="tab" data-tab="change" role="tab">Holdings Change</button>
   <button class="tab" data-tab="funds" role="tab">Fund Browser</button>
+  <button class="tab" data-tab="vol" role="tab">Volatility</button>
 </nav>
 
 <!-- ========== TAB: FLOWS ========== -->
@@ -165,9 +168,35 @@ svg[data-charttip]{cursor:crosshair}
   <div id="fbOut"></div>
 </section>
 
+<!-- ========== TAB: VOLATILITY (Sinclair OHLC estimators) ========== -->
+<section id="tab-vol" class="panel" hidden>
+  <div class="row">
+    <div><label for="volFund">Fund ticker</label><input type="text" id="volFund" value="JPM" placeholder="JPM"></div>
+    <div><label for="volFundCsv">Fund OHLC CSV</label><input type="file" id="volFundCsv" accept=".csv,text/csv"></div>
+    <div><label for="volBench">Benchmark (optional)</label><input type="text" id="volBench" value="SPY" placeholder="SPY"></div>
+    <div><label for="volBenchCsv">Benchmark OHLC CSV</label><input type="file" id="volBenchCsv" accept=".csv,text/csv"></div>
+  </div>
+  <div class="row">
+    <div><label for="volEstimator">Estimator</label><select id="volEstimator"></select></div>
+    <div><label for="volWindow">Window (sessions)</label><input type="number" id="volWindow" min="3" max="252" value="30" style="width:90px"></div>
+    <div><label for="volWindows">Cone windows</label><input type="text" id="volWindows" value="30, 60, 90, 120" style="width:150px;text-transform:none"></div>
+    <div><label for="volQLo">Lower quantile</label><input type="number" id="volQLo" min="0.01" max="0.49" step="0.01" value="0.25" style="width:80px"></div>
+    <div><label for="volQHi">Upper quantile</label><input type="number" id="volQHi" min="0.51" max="0.99" step="0.01" value="0.75" style="width:80px"></div>
+    <button id="volRun" class="primary">Compute volatility</button>
+  </div>
+  <div class="row">
+    <div><label for="volSnap">…or a snapshot built by tools/vol_snapshot.py</label><input type="file" id="volSnap" accept=".json,application/json"></div>
+    <button id="volDemo">Load demo snapshot</button>
+  </div>
+  <p class="msg">TickerInside publishes weekly returns, not daily OHLC — so this tab takes prices directly: a daily <b>Yahoo Finance CSV</b> (Date, Open, High, Low, Close, Adj Close) for the fund and, optionally, a benchmark. The estimators run here in the browser. The <code>tools/vol_snapshot.py</code> helper instead runs the real <a href="https://github.com/jasonstrimpel/volatility-trading" target="_blank" rel="noopener">volatility-trading</a> library and writes a JSON snapshot this tab loads unchanged, so Python numbers and browser numbers sit in the same view.</p>
+  <div id="volOut"></div>
+</section>
+
 <details style="margin:14px 0 0"><summary class="msg" style="cursor:pointer">What's new</summary>
   <div class="msg" style="margin-top:8px;line-height:1.7">
-    <b>Nov 17, 2026</b> — freshness chip: the title area now shows when the source data was last built and through which dates it runs, turning amber/red when the upstream nightly build runs late or stalls. When a delay happens, the chip relays the publisher's own stated cause from their incident log and links to their status page — the dashboard never guesses.
+    <b>Nov 21, 2026</b> — the freshness chip now separates two different failures: a <b>late nightly build</b> (no new files arriving) from a <b>stalled flows layer</b> (issuer files keep arriving but the publisher's flow calculation stops advancing). It names which one you are seeing, with the dates behind it, instead of lumping both into "delayed".
+    <br><b>Nov 17, 2026</b> — volatility tab: Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang, Hodges-Tompkins, close-to-close, skew and kurtosis with cones, rolling quantiles/extremes/descriptives, distribution, benchmark ratio, rolling correlation and an OLS comparison. Reads Yahoo/any daily OHLC CSV, or a snapshot precomputed by the cloned <code>volatility-trading</code> library via <code>tools/vol_snapshot.py</code>.
+    <br><b>Nov 17, 2026</b> — freshness chip: the title area now shows when the source data was last built and through which dates it runs, turning amber/red when the upstream nightly build runs late or stalls. When a delay happens, the chip relays the publisher's own stated cause from their incident log and links to their status page — the dashboard never guesses.
     <br><b>Nov 8, 2026</b> — Fund Browser (every fund of any issuer — all 238 Invesco funds one click from comparison) · Holdings Change works for SEC-filed funds via quarterly reports (QQQ, RSP…) · one-request batch loads · grouped Pre-list dropdowns on all four ticker tabs · instant chart tooltips, crosshair cursors and hover polish.
   </div>
 </details>
@@ -175,6 +204,7 @@ svg[data-charttip]{cursor:crosshair}
   Data: <a href="https://tickerinside.com" target="_blank" rel="noopener">TickerInside</a> (CC BY 4.0), issuer holdings history and SEC Form N-PORT filings.
   Overlap = <code>Σ min(wᵢᴀ, wᵢʙ)</code> over shared holdings. Flows = net creations/redemptions measured from daily issuer files (ETFs read daily only).
   Holdings history and flows exist only for ETFs read daily from issuer files; other funds (Invesco, Vanguard…) get holdings from SEC filings and weight changes from quarterly reports instead.
+  Volatility estimators follow Euan Sinclair's <i>Volatility Trading</i>; the browser port mirrors the models of <a href="https://github.com/jasonstrimpel/volatility-trading" target="_blank" rel="noopener">jasonstrimpel/volatility-trading</a> (GPL-3.0), used unmodified by the optional Python snapshot builder. OHLC prices are yours (Yahoo CSV or a snapshot), not TickerInside.
   Not investment advice.
 </footer>
 </main>
@@ -244,22 +274,40 @@ svg[data-charttip]{cursor:crosshair}
       const prices = s.data && s.data.prices && s.data.prices.through;
       const files = s.data && s.data.issuer_files && s.data.issuer_files.newest;
       const nport = s.data && s.data.sec_nport && s.data.sec_nport.dataset;
-      const dot = stalled ? 'var(--out)' : missed ? 'var(--mv)' : 'var(--in)';
+      // flows layer check: /flows.json carries both its newest flow day and the newest issuer file it saw.
+      // Normally a flow is dated one session before that file; a wider gap means the publisher's FLOW build
+      // stopped advancing while the nightly file build kept running — a different failure, owned by the source.
+      let flowFrozen = null;
+      try {
+        const fl = await getJSON(BASE + 'flows.json', 20000);
+        if (fl && !fl._404 && fl.date && fl.newest_file) {
+          const sess = (a, b) => { let n = 0; const d = new Date(a + 'T00:00:00Z'), e = new Date(b + 'T00:00:00Z'); while (d < e) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w >= 1 && w <= 5) n++; } return n; };
+          const gap = sess(fl.date, fl.newest_file);
+          if (gap > 2) flowFrozen = { flows: fl.date, files: fl.newest_file, gap };
+        }
+      } catch (e3) { /* optional — the chip works without it */ }
+      const dot = stalled ? 'var(--out)' : (missed || flowFrozen) ? 'var(--mv)' : 'var(--in)';
       let tail;
       if (stalled) tail = ' — newer closes are missing upstream; each chart shows where its data ends';
       else if (missed) tail = ' — newer closes usually appear within hours; charts show where their data ends';
       else tail = '';
       if ((stalled || missed) && upInc) tail = ' — the publisher reports: ' + causeOf(upInc) + (upInc.started ? ' (open since ' + esc(upInc.started.slice(0, 10)) + ' UTC)' : '') + '; each chart shows where its data ends';
+      // a frozen flows layer outranks the build-lateness wording: the files ARE current, the flow maths is not
+      if (flowFrozen) tail = ' — flows have not advanced since ' + esc(flowFrozen.flows) + ' although issuer files reach ' + esc(flowFrozen.files) + ' (' + flowFrozen.gap + ' sessions): the publisher\'s flow build has stopped while the nightly file build kept running — holdings and prices above are current';
+      const label = stalled ? '⚠ build stalled — last successful source build '
+        : missed ? 'source build late — last successful build '
+        : flowFrozen ? 'flows stalled — last source build '
+        : 'source data built ';
       const el = $('freshChip');
       if (el) el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dot};margin-right:6px;vertical-align:middle"></span>` +
-        esc((stalled ? '⚠ build stalled — last successful source build ' : missed ? 'source build late — last successful build ' : 'source data built ') + s.built_at.slice(0, 16).replace('T', ' ') + ' UTC') +
+        esc(label + s.built_at.slice(0, 16).replace('T', ' ') + ' UTC') +
         (missed ? ' · next build ' + (stalled ? 'overdue' : 'due') + ' by 02:00 UTC weekday nights' : '') +
         (files ? ' · holdings files through ' + esc(files) : '') +
         (prices ? ' · prices through ' + esc(prices) : '') +
         (nport ? ' · SEC reports ' + esc(nport) : '') +
         tail +
         (apiInc ? ' · <a href="https://tickerinside.com/status/" target="_blank" rel="noopener">publisher status</a>: API index check failing since ' + esc(apiInc.started.slice(0, 10)) + ' — the data files this page reads still serve' :
-          (missed || stalled) ? ' · <a href="https://tickerinside.com/status/" target="_blank" rel="noopener">publisher status</a>' : '');
+          (missed || stalled || flowFrozen) ? ' · <a href="https://tickerinside.com/status/" target="_blank" rel="noopener">publisher status</a>' : '');
     } catch (e) { /* the chip is auxiliary — stay hidden if it cannot load */ }
   })();
 
@@ -906,22 +954,499 @@ const fbState = { items: [], issuer: '', as_of: '', tried: false };
     });
   }
 
+  // ============================================================
+  // MODULE 7: VOLATILITY (Sinclair OHLC estimators)
+  // TickerInside serves weekly returns, not daily OHLC, so this tab
+  // reads prices directly (Yahoo CSV or a Python-built snapshot).
+  // The formulas follow Euan Sinclair's "Volatility Trading" and
+  // mirror jasonstrimpel/volatility-trading's models; the marked
+  // block below is kept pure so tools/vol_parity_check.mjs can run
+  // it against the Python library's own output.
+  // ============================================================
+  const VOL_ESTIMATORS = [
+    ['GarmanKlass', 'Garman-Klass'], ['HodgesTompkins', 'Hodges-Tompkins'],
+    ['Parkinson', 'Parkinson'], ['RogersSatchell', 'Rogers-Satchell'],
+    ['YangZhang', 'Yang-Zhang'], ['Raw', 'Close-to-close'],
+    ['Skew', 'Skew (log returns)'], ['Kurtosis', 'Kurtosis (log returns)']
+  ];
+  const VOL_NONVOL = new Set(['Skew', 'Kurtosis']);
+  const VOL_CLOSE_ONLY = ['Raw', 'HodgesTompkins', 'Skew', 'Kurtosis'];
+  // >>> volatility formulas
+  const vMean = a => a.reduce((q, x) => q + x, 0) / a.length;
+  const vStd = a => { if (a.length < 2) return NaN; const m = vMean(a); return Math.sqrt(a.reduce((q, x) => q + (x - m) ** 2, 0) / (a.length - 1)); };
+  const vQuantile = (a, q) => {
+    const s = a.slice().sort((x, y) => x - y), p = (s.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p);
+    return s[lo] + (s[hi] - s[lo]) * (p - lo);
+  };
+  // One estimator series, aligned to the price rows (null where undefined).
+  // Mirrors the Python models: GK/Parkinson/Rogers-Satchell average a daily
+  // variance proxy then annualise; Yang-Zhang mixes overnight, close and RS
+  // terms; Hodges-Tompkins applies its finite-sample correction; Skew and
+  // Kurtosis are the unbiased sample moments of log returns.
+  function computeVol(rows, name, window, tp = 252) {
+    const n = rows.length, out = new Array(n).fill(null);
+    if (!(window >= 2) || n <= window) return out;
+    const lr = new Array(n).fill(null);
+    for (let i = 1; i < n; i++) { const p = rows[i - 1].c, q = rows[i].c; if (p > 0 && q > 0) lr[i] = Math.log(q / p); }
+    if (name === 'Raw' || name === 'HodgesTompkins' || name === 'Skew' || name === 'Kurtosis') {
+      // volatility-trading computes `log_return.count()` once over the whole
+      // series, so Hodges-Tompkins' finite-sample correction is a single
+      // constant factor here (not a rolling one). Mirroring it exactly keeps
+      // the browser numbers identical to the library's output.
+      const lrCount = lr.filter(v => v != null && Number.isFinite(v)).length;
+      const htN = lrCount - window + 1;
+      const htAdj = htN > 0 ? 1 / (1 - window / htN + (window * window - 1) / (3 * htN * htN)) : NaN;
+      for (let i = window; i < n; i++) {
+        const vals = lr.slice(i - window + 1, i + 1);
+        if (vals.some(v => v == null || !Number.isFinite(v))) continue;
+        const m = vMean(vals), sd = vStd(vals);
+        if (name === 'Raw') out[i] = sd * Math.sqrt(tp);
+        else if (name === 'HodgesTompkins') out[i] = sd * Math.sqrt(tp) * htAdj;
+        else if (name === 'Skew') {
+          if (window < 3 || !(sd > 0)) continue;
+          out[i] = window / ((window - 1) * (window - 2)) * vals.reduce((q, x) => q + ((x - m) / sd) ** 3, 0);
+        } else {
+          if (window < 4 || !(sd > 0)) continue;
+          out[i] = window * (window + 1) / ((window - 1) * (window - 2) * (window - 3)) * vals.reduce((q, x) => q + ((x - m) / sd) ** 4, 0)
+            - 3 * (window - 1) ** 2 / ((window - 2) * (window - 3));
+        }
+      }
+      return out;
+    }
+    const gk = r => { const hl = Math.log(r.h / r.l), co = Math.log(r.c / r.o); return 0.5 * hl * hl - (2 * Math.LN2 - 1) * co * co; };
+    const pk = r => { const hl = Math.log(r.h / r.l); return hl * hl / (4 * Math.LN2); };
+    const rs = r => { const ho = Math.log(r.h / r.o), lo = Math.log(r.l / r.o), co = Math.log(r.c / r.o); return ho * (ho - co) + lo * (lo - co); };
+    for (let i = window - 1; i < n; i++) {
+      if (name === 'GarmanKlass' || name === 'Parkinson') {
+        let s = 0, ok = true;
+        for (let j = i - window + 1; j <= i; j++) { const r = rows[j]; if (!(r.o > 0 && r.h > 0 && r.l > 0 && r.c > 0)) { ok = false; break; } s += name === 'GarmanKlass' ? gk(r) : pk(r); }
+        if (ok) { const v = tp * s / window; out[i] = v >= 0 ? Math.sqrt(v) : null; }
+      } else if (name === 'RogersSatchell') {
+        let s = 0, ok = true;
+        for (let j = i - window + 1; j <= i; j++) { const r = rows[j]; if (!(r.o > 0 && r.h > 0 && r.l > 0 && r.c > 0)) { ok = false; break; } s += rs(r); }
+        const v = ok ? s / window : NaN;
+        out[i] = v >= 0 ? Math.sqrt(tp * v) : null;
+      } else if (name === 'YangZhang') {
+        if (i < window) continue; // needs the previous close for every session in the window
+        let so = 0, sc = 0, sr = 0, ok = true;
+        for (let j = i - window + 1; j <= i; j++) {
+          const r = rows[j], p = rows[j - 1].c;
+          if (!(r.o > 0 && r.c > 0 && p > 0)) { ok = false; break; }
+          const oc = Math.log(r.o / p), cc = lr[j];
+          if (cc == null) { ok = false; break; }
+          so += oc * oc; sc += cc * cc; sr += rs(r);
+        }
+        if (!ok) continue;
+        const k = 0.34 / (1.34 + (window + 1) / (window - 1));
+        const v = (so + k * sc + (1 - k) * sr) / (window - 1);
+        out[i] = v >= 0 ? Math.sqrt(v) * Math.sqrt(tp) : null;
+      }
+    }
+    return out;
+  }
+  function rollApply(series, w, fn) {
+    const out = new Array(series.length).fill(null);
+    for (let i = w - 1; i < series.length; i++) {
+      const win = series.slice(i - w + 1, i + 1);
+      if (win.some(v => v == null || !Number.isFinite(v))) continue; // pandas needs a full window
+      out[i] = fn(win);
+    }
+    return out;
+  }
+  // <<< volatility formulas
+
+  const volState = { fund: null, bench: null, mode: '', generated: '', tp: 252 };
+  const volLabelOf = n => (VOL_ESTIMATORS.find(x => x[0] === n) || [, n])[1];
+  const volFmt = (name, v) => v == null || !Number.isFinite(v) ? '—' : VOL_NONVOL.has(name) ? v.toFixed(2) : (v * 100).toFixed(2) + '%';
+  const volFile = id => { const el = $(id); return el && el.files && el.files[0] ? el.files[0] : null; };
+
+  // ---------- input: daily OHLC CSV (Yahoo, Stooq, any vendor order) ----------
+  function parseOhlc(text, name) {
+    const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 3) throw new Error((name || 'CSV') + ': fewer than 3 non-empty lines');
+    const sepScore = [',', ';', '\t'].map(s => [s, lines.slice(0, 6).reduce((q, l) => q + l.split(s).length - 1, 0)]).sort((a, b) => b[1] - a[1]);
+    const sep = sepScore[0][1] ? sepScore[0][0] : ',';
+    const cells = l => l.split(sep).map(x => x.trim().replace(/^"+|"+$/g, ''));
+    const norm = x => x.toLowerCase().replace(/[^a-z0-9]/g, '');
+    let head = null, hi = -1;
+    for (let i = 0; i < Math.min(15, lines.length); i++) {
+      const h = cells(lines[i]).map(norm);
+      if (h.includes('date') && h.some(x => x === 'open' || x === 'close' || x === 'adjclose')) { head = h; hi = i; break; }
+    }
+    if (!head) throw new Error((name || 'CSV') + ': no header row with Date and Open/High/Low/Close — export a daily OHLC CSV (Yahoo: Date, Open, High, Low, Close, Adj Close, Volume)');
+    const col = (...names) => { for (const x of names) { const i = head.indexOf(x); if (i >= 0) return i; } return -1; };
+    const iD = col('date', 'datetime', 'timestamp'), iO = col('open'), iH = col('high'), iL = col('low'), iC = col('close'), iA = col('adjclose');
+    if (iD < 0 || (iC < 0 && iA < 0)) throw new Error((name || 'CSV') + ': needs a Date column and a Close (or Adj Close) column');
+    const pn = s => { if (s == null || s === '') return NaN; const v = Number(String(s).replace(/[,$%\s]/g, '')); return Number.isFinite(v) ? v : NaN; };
+    const pd = s => { const t = Date.parse(String(s).trim()); return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : ''; };
+    const rows = []; let filled = 0, adjusted = 0, inconsistent = 0;
+    for (let i = hi + 1; i < lines.length; i++) {
+      const c = cells(lines[i]); if (!c.length || !c[iD]) continue;
+      const d = pd(c[iD]); if (!d) continue;
+      let o = iO >= 0 ? pn(c[iO]) : NaN, h = iH >= 0 ? pn(c[iH]) : NaN, l = iL >= 0 ? pn(c[iL]) : NaN;
+      const cl = iC >= 0 ? pn(c[iC]) : NaN, adj = iA >= 0 ? pn(c[iA]) : NaN;
+      let close = Number.isFinite(cl) ? cl : adj;
+      if (!Number.isFinite(close) || close <= 0) continue;
+      // Yahoo's Adj Close is dividend-adjusted while its Close is not: scale O/H/L
+      // by Adj Close / Close so all four prices share one basis (yfinance auto_adjust does this).
+      if (Number.isFinite(adj) && Number.isFinite(cl) && cl > 0 && Math.abs(adj / cl - 1) > 1e-9) {
+        const f = adj / cl;
+        if (f > 0) { if (!Number.isFinite(o)) o = cl; if (!Number.isFinite(h)) h = cl; if (!Number.isFinite(l)) l = cl; o *= f; h *= f; l *= f; close = adj; adjusted++; }
+      }
+      if (!Number.isFinite(o)) { o = close; filled++; }
+      if (!Number.isFinite(h)) { h = Math.max(o, close); filled++; }
+      if (!Number.isFinite(l)) { l = Math.min(o, close); filled++; }
+      // High and Low the wrong way round is a column-order problem, not a price
+      // problem; swap it. But never clamp High/Low to fit Open/Close: bending the
+      // range to make the file look valid changes every range-based estimator.
+      if (l > h) { const t = l; l = h; h = t; }
+      if (h < Math.max(o, close) || l > Math.min(o, close)) inconsistent++;
+      rows.push({ d, o, h, l, c: close });
+    }
+    if (rows.length < 40) throw new Error((name || 'CSV') + ': only ' + rows.length + ' usable rows — the estimators need at least ~40 sessions (a 30-session window plus history)');
+    const m = new Map(); rows.forEach(r => m.set(r.d, r));
+    const out = [...m.values()].sort((a, b) => a.d.localeCompare(b.d));
+    out.partial = filled > 0;
+    out.adjusted = adjusted > 0;
+    out.inconsistent = inconsistent;
+    return out;
+  }
+
+  // ---------- input: snapshot built by tools/vol_snapshot.py ----------
+  function parseSnapshot(obj, name) {
+    if (!obj || typeof obj !== 'object') throw new Error((name || 'JSON') + ': not a JSON object');
+    if (!/^etf-volatility-snapshot\//.test(String(obj.schema || ''))) throw new Error((name || 'JSON') + ': not an etf-volatility-snapshot file (run tools/vol_snapshot.py to build one)');
+    const pack = (o, fallback) => {
+      if (!o || typeof o !== 'object') return null;
+      const rows = Array.isArray(o.ohlc) ? o.ohlc.filter(r => Array.isArray(r) && r.length >= 5).map(r => ({ d: String(r[0]), o: +r[1], h: +r[2], l: +r[3], c: +r[4] })) : [];
+      if (!rows.length) return null;
+      rows.partial = false;
+      // a snapshot from vol_snapshot.py is adjusted and complete, but a hand-made
+      // one can still carry a Close outside High–Low: flag it, never bend it.
+      rows.inconsistent = rows.filter(r => r.l > r.h || r.h < Math.max(r.o, r.c) || r.l > Math.min(r.o, r.c)).length;
+      const est = {};
+      for (const [k, byWin] of Object.entries(o.estimators || {})) {
+        est[k] = {};
+        for (const [w, arr] of Object.entries(byWin || {})) {
+          if (!Array.isArray(arr)) continue;
+          est[k][w] = arr.filter(x => Array.isArray(x) && x.length >= 2).map(x => [String(x[0]), x[1] == null ? null : +x[1]]);
+        }
+      }
+      return { ticker: String(o.ticker || fallback || '').toUpperCase(), rows, est, source: 'snapshot' };
+    };
+    const fund = pack(obj.fund, 'fund'); if (!fund) throw new Error((name || 'JSON') + ': the snapshot has no fund OHLC');
+    return { fund, bench: pack(obj.bench, ''), generated: String(obj.generated_at || ''), tp: +obj.trading_periods || 252, mode: 'snapshot' };
+  }
+
+  function volEstimatorOptions(closeOnly) {
+    const list = closeOnly ? VOL_ESTIMATORS.filter(([n]) => VOL_CLOSE_ONLY.includes(n)) : VOL_ESTIMATORS;
+    const cur = $('volEstimator').value;
+    $('volEstimator').innerHTML = list.map(([n, l]) => `<option value="${n}">${esc(l)}</option>`).join('');
+    $('volEstimator').value = list.some(([n]) => n === cur) ? cur : list[0][0];
+  }
+  volEstimatorOptions(false);
+
+  async function loadVol() {
+    const out = $('volOut'), snapF = volFile('volSnap'), fundF = volFile('volFundCsv');
+    if (!snapF && !fundF) { out.innerHTML = '<p class="msg">Pick a fund OHLC CSV or a snapshot JSON — or press <b>Load demo snapshot</b> to see the tab with prices that ship with the project.</p>'; return; }
+    out.innerHTML = '<p class="msg">Reading prices…</p>';
+    if (snapF) {
+      const snap = parseSnapshot(JSON.parse(await snapF.text()), snapF.name);
+      volState.fund = snap.fund; volState.bench = snap.bench; volState.tp = snap.tp; volState.mode = 'snapshot'; volState.generated = snap.generated;
+      $('volFund').value = snap.fund.ticker;
+      if (snap.bench) $('volBench').value = snap.bench.ticker;
+      volEstimatorOptions(false);
+    } else {
+      const rows = parseOhlc(await fundF.text(), fundF.name);
+      const label = ($('volFund').value || fundF.name.replace(/\.[^.]+$/, '')).trim().toUpperCase();
+      volState.fund = { ticker: label || 'FUND', rows, est: {}, source: 'csv' };
+      const benchF = volFile('volBenchCsv');
+      volState.bench = null;
+      if (benchF) {
+        const brows = parseOhlc(await benchF.text(), benchF.name);
+        const blabel = ($('volBench').value || benchF.name.replace(/\.[^.]+$/, '')).trim().toUpperCase();
+        volState.bench = { ticker: blabel || 'BENCH', rows: brows, est: {}, source: 'csv' };
+      }
+      volState.mode = 'csv'; volState.generated = ''; volState.tp = 252;
+      volEstimatorOptions(rows.partial);
+    }
+    renderVol();
+  }
+
+  async function loadVolDemo(silent) {
+    const out = $('volOut');
+    try {
+      const r = await fetch('volatility-snapshot-demo.json', { headers: { Accept: 'application/json' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const snap = parseSnapshot(await r.json(), 'volatility-snapshot-demo.json');
+      volState.fund = snap.fund; volState.bench = snap.bench; volState.tp = snap.tp; volState.mode = 'snapshot'; volState.generated = snap.generated;
+      $('volFund').value = snap.fund.ticker;
+      if (snap.bench) $('volBench').value = snap.bench.ticker;
+      volEstimatorOptions(false);
+      renderVol();
+    } catch (e) {
+      if (silent) {
+        out.innerHTML = '<p class="msg">Pick a fund OHLC CSV or a snapshot JSON above — the demo file loads automatically when this page is served over HTTP, but browsers block <code>fetch</code> on <code>file://</code> pages. <code>volatility-snapshot-demo.json</code> sits next to this HTML and can be selected with the snapshot input.</p>';
+        return;
+      }
+      out.innerHTML = `<p class="err">Demo snapshot not loaded: ${esc(e.message)}</p><p class="msg">The demo file sits next to this HTML. Browsers block <code>fetch</code> on <code>file://</code> pages, so either serve the folder (<code>python -m http.server</code>) or select <code>volatility-snapshot-demo.json</code> with the snapshot file input above.</p>`;
+    }
+  }
+
+  function volSeriesFor(ds, name, w, tp) {
+    const s = ds.est && ds.est[name] && (ds.est[name][String(w)] || ds.est[name][w]);
+    if (Array.isArray(s) && s.length) return { dates: s.map(x => x[0]), vals: s.map(x => x[1]), from: 'python' };
+    return { dates: ds.rows.map(r => r.d), vals: computeVol(ds.rows, name, w, tp), from: 'browser' };
+  }
+  function volStats(vals) {
+    const v = vals.filter(x => x != null && Number.isFinite(x));
+    if (!v.length) return null;
+    const last = v[v.length - 1];
+    return { n: v.length, last, mean: vMean(v), median: vQuantile(v, .5), sd: vStd(v), min: Math.min(...v), max: Math.max(...v), pct: v.filter(x => x <= last).length / v.length };
+  }
+  function volChart(series, labels, opt = {}) {
+    const W = 600, H = opt.h || 160, pad = 4;
+    const vals = series.flatMap(s => s.vals.filter(v => v != null && Number.isFinite(v)));
+    if (!vals.length) return '<p class="msg">Not enough history to draw this chart.</p>';
+    const fmt = opt.fmt || (v => Number(v).toFixed(2));
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (opt.baseline != null) { lo = Math.min(lo, opt.baseline); hi = Math.max(hi, opt.baseline); }
+    if (hi - lo < 1e-12) { hi = lo + Math.abs(lo || 1) * 0.01; lo -= Math.abs(lo || 1) * 0.01; }
+    const padV = (hi - lo) * 0.07; lo -= padV; hi += padV;
+    const n = labels.length;
+    const X = k => pad + (n > 1 ? k / (n - 1) : 0) * (W - pad * 2);
+    const Y = v => pad + (hi - v) / (hi - lo) * (H - pad * 2);
+    const tips = labels.map((d, k) => d + '\n' + series.map(s => s.name + '  ' + (s.vals[k] == null || !Number.isFinite(s.vals[k]) ? '—' : fmt(s.vals[k]))).join('\n'));
+    const grid = [0, .25, .5, .75, 1].map(f => { const v = hi - f * (hi - lo); return `<line x1="0" x2="${W}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1" opacity=".5"/>`; }).join('');
+    const base = opt.baseline != null ? `<line x1="0" x2="${W}" y1="${Y(opt.baseline).toFixed(1)}" y2="${Y(opt.baseline).toFixed(1)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>` : '';
+    const lines = series.map(s => `<polyline fill="none" stroke="${s.color}" stroke-width="${s.bold ? 2.2 : 1.5}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} vector-effect="non-scaling-stroke" points="${s.vals.map((v, k) => v == null || !Number.isFinite(v) ? '' : X(k).toFixed(1) + ',' + Y(v).toFixed(1)).filter(Boolean).join(' ')}"/>`).join('');
+    const legend = '<div class="msg">' + series.map(s => `<span style="color:${s.color}">■</span> ${esc(s.name)}`).join(' &nbsp; ')
+      + `<span style="float:right">${esc(labels[0])} → ${esc(labels[n - 1])} · ${esc(fmt(lo + padV))} to ${esc(fmt(hi - padV))}</span></div>`;
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" aria-label="${esc(opt.aria || 'volatility chart')}" data-charttip="${chartTipLabels(tips)}">${grid}${base}${lines}</svg>${legend}`;
+  }
+  // Volatility cone as bands: min–max shaded, 25th–75th shaded, median line,
+  // latest realized volatility in red. Kept text-free like the other charts
+  // (the table under it carries the exact numbers for each window).
+  function volConeChart(cones, qlo, qhi, fmt) {
+    const W = 600, H = 170, pad = 4, xPad = 34;
+    const all = cones.flatMap(c => [c.min, c.max, c.lo, c.hi, c.med, c.last]).filter(v => v != null && Number.isFinite(v));
+    if (!all.length) return '<p class="msg">Not enough history to draw the cone.</p>';
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (hi - lo < 1e-12) { hi = lo + Math.abs(lo || 1) * 0.01; lo -= Math.abs(lo || 1) * 0.01; }
+    const padV = (hi - lo) * 0.08; lo -= padV; hi += padV;
+    const n = cones.length;
+    const X = k => (xPad + (n > 1 ? k / (n - 1) : 0.5) * (W - xPad * 2)).toFixed(1);
+    const Y = v => Number.isFinite(v) ? (pad + (hi - v) / (hi - lo) * (H - pad * 2)).toFixed(1) : null;
+    const band = (top, bottom, fill, op) => {
+      const topPts = cones.map((c, k) => [X(k), Y(top(c))]);
+      const botPts = cones.slice().reverse().map((c, j) => [X(n - 1 - j), Y(bottom(c))]);
+      if (topPts.concat(botPts).some(p => p[1] == null)) return '';   // a missing edge would draw NaN — skip the band, the table still carries the numbers
+      return `<path d="M${topPts.map(p => p.join(',')).join(' L')} L${botPts.map(p => p.join(',')).join(' L')} Z" fill="${fill}" opacity="${op}" stroke="none"/>`;
+    };
+    const grid = [0, .25, .5, .75, 1].map(f => `<line x1="0" x2="${W}" y1="${(pad + f * (H - pad * 2)).toFixed(1)}" y2="${(pad + f * (H - pad * 2)).toFixed(1)}" stroke="var(--line)" stroke-width="1" opacity=".4"/>`).join('');
+    const line = (pick, color, width, dash) => {
+      const pts = cones.map((c, k) => { const y = Y(pick(c)); return y == null ? null : X(k) + ',' + y; }).filter(Boolean);
+      return pts.length < 2 ? '' : `<polyline fill="none" stroke="${color}" stroke-width="${width}" ${dash ? `stroke-dasharray="${dash}"` : ''} vector-effect="non-scaling-stroke" points="${pts.join(' ')}"/>`;
+    };
+    const dots = cones.map((c, k) => { const y = Y(c.last); return y == null ? '' : `<circle cx="${X(k)}" cy="${y}" r="3" fill="var(--out)" vector-effect="non-scaling-stroke"/>`; }).join('');
+    const legend = '<div class="msg">'
+      + '<span style="color:var(--muted)">■</span> min–max &nbsp; '
+      + `<span style="color:var(--accent)">■</span> ${Math.round(qlo * 100)}th–${Math.round(qhi * 100)}th percentile &nbsp; `
+      + '<span style="color:#64748b">—</span> median &nbsp; '
+      + `<span style="color:var(--out)">●</span> realized latest &nbsp; `
+      + `<span style="float:right">${esc(cones[0].w)}d → ${esc(cones[n - 1].w)}d · ${esc(fmt(lo + padV))} to ${esc(fmt(hi - padV))}</span></div>`;
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" aria-label="Volatility cones by window">`
+      + grid + band(c => c.max, c => c.min, 'var(--muted)', '.20') + band(c => c.hi, c => c.lo, 'var(--accent)', '.22')
+      + line(c => c.med, '#64748b', 1.4) + line(c => c.last, 'var(--out)', 2.2) + dots + '</svg>' + legend;
+  }
+  function volHistogram(vals, name) {
+    const v = vals.filter(x => x != null && Number.isFinite(x));
+    if (v.length < 8) return '<p class="msg">Not enough estimator history for a distribution.</p>';
+    let lo = Math.min(...v), hi = Math.max(...v);
+    if (hi - lo < 1e-12) { hi = lo + Math.abs(lo || 1) * 0.01; lo -= Math.abs(lo || 1) * 0.01; }
+    const bins = Math.max(10, Math.min(50, Math.round(Math.sqrt(v.length) * 1.5)));
+    const counts = new Array(bins).fill(0);
+    for (const x of v) counts[Math.min(bins - 1, Math.floor((x - lo) / (hi - lo) * bins))]++;
+    const bw = (hi - lo) / bins, mu = vMean(v), sd = vStd(v), n = v.length;
+    const exp = counts.map((_, i) => { const x = lo + (i + .5) * bw; return sd > 0 ? n * bw * Math.exp(-.5 * ((x - mu) / sd) ** 2) / (sd * Math.sqrt(2 * Math.PI)) : 0; });
+    const maxY = Math.max(...counts, ...exp, 1), W = 600, H = 150;
+    const bars = counts.map((c, i) => { const bh = c / maxY * (H - 6); return `<rect x="${(i * W / bins + 1).toFixed(1)}" width="${Math.max(W / bins - 2, 1).toFixed(1)}" y="${(H - bh).toFixed(1)}" height="${bh.toFixed(1)}" fill="${VOL_NONVOL.has(name) ? 'var(--mv)' : 'var(--accent)'}" opacity=".35"/>`; }).join('');
+    const curve = exp.map((e, i) => `${(i * W / bins + W / bins / 2).toFixed(1)},${(H - e / maxY * (H - 6)).toFixed(1)}`).join(' ');
+    const last = v[v.length - 1], lx = Math.max(1, Math.min(W - 1, (last - lo) / (hi - lo) * W));
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" aria-label="Distribution of the estimator">${bars}<polyline fill="none" stroke="var(--in)" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${curve}"/><line x1="${lx.toFixed(1)}" x2="${lx.toFixed(1)}" y1="0" y2="${H}" stroke="var(--out)" stroke-width="1.5" stroke-dasharray="3 3"/></svg>` +
+      `<div class="msg">${bins} bins · mean ${volFmt(name, mu)} · sd ${volFmt(name, sd)} · latest ${volFmt(name, last)} (red) · normal curve (green)</div>`;
+  }
+  function olsNoIntercept(x, y) {
+    const px = [], py = [];
+    for (let i = 0; i < Math.min(x.length, y.length); i++) if (Number.isFinite(x[i]) && Number.isFinite(y[i])) { px.push(x[i]); py.push(y[i]); }
+    if (px.length < 3) return null;
+    let sxx = 0, sxy = 0, syy = 0;
+    for (let i = 0; i < px.length; i++) { sxx += px[i] * px[i]; sxy += px[i] * py[i]; syy += py[i] * py[i]; }
+    if (!(sxx > 0)) return null;
+    const beta = sxy / sxx, sse = py.reduce((q, v, i) => q + (v - beta * px[i]) ** 2, 0);
+    const df = px.length - 1, se = df > 0 ? Math.sqrt(sse / df / sxx) : NaN;
+    return { beta, se, t: se > 0 ? beta / se : NaN, r2: syy > 0 ? 1 - sse / syy : NaN, n: px.length };
+  }
+  function volAlign(ad, av, bd, bv) {
+    const m = new Map(); for (let i = 0; i < bd.length; i++) m.set(bd[i], bv[i]);
+    const dates = [], a = [], b = [];
+    for (let i = 0; i < ad.length; i++) {
+      const x = av[i], y = m.get(ad[i]);
+      if (x != null && y != null && Number.isFinite(x) && Number.isFinite(y)) { dates.push(ad[i]); a.push(x); b.push(y); }
+    }
+    return { dates, a, b };
+  }
+
+  function renderVol() {
+    const S = volState, out = $('volOut');
+    if (!S.fund || !S.fund.rows.length) { out.innerHTML = '<p class="msg">Load an OHLC CSV or a snapshot first.</p>'; return; }
+    const name = $('volEstimator').value || 'GarmanKlass';
+    const w = Math.max(3, Math.min(252, Math.round(num($('volWindow').value)) || 30));
+    const qlo = Math.min(0.49, Math.max(0.01, num($('volQLo').value) || 0.25));
+    const qhi = Math.max(0.51, Math.min(0.99, num($('volQHi').value) || 0.75));
+    let wins = [...new Set(String($('volWindows').value).split(/[\s,;]+/).map(x => Math.round(Number(x))).filter(x => x >= 3 && x <= 252))].sort((a, b) => a - b);
+    if (!wins.length) wins = [w];
+    const tp = S.tp || 252, fmt = v => volFmt(name, v);
+    const main = volSeriesFor(S.fund, name, w, tp), st = volStats(main.vals);
+    if (!st) { out.innerHTML = '<p class="msg">No estimator values — the file has fewer sessions than the window. Use a shorter window or a longer price history.</p>'; return; }
+    const dates = main.dates, t = S.fund.ticker;
+    const from = main.from === 'python'
+      ? 'precomputed by <b>volatility-trading</b> in the snapshot' + (S.generated ? ' · built ' + esc(S.generated.slice(0, 16).replace('T', ' ')) + ' UTC' : '')
+      : 'computed in the browser from your CSV';
+    const tile = (l, v, cls = '') => `<div><div class="overlap-big" style="font-size:1.4rem">${v}</div><div class="overlap-label">${l}</div></div>`;
+    const card = (title, meta, body) => `<div class="card"><header><h2>${title}</h2><span class="meta">${meta}</span></header><div class="body">${body}</div></div>`;
+    const partial = S.fund.rows.partial ? '<p class="msg" style="color:var(--mv)">⚠ This file has no Open/High/Low on some rows, so only close-based estimators are offered. Range-based estimators (Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang) need all four prices.</p>' : '';
+    const badRows = S.fund.rows.inconsistent || 0;
+    const inconsistent = badRows ? `<p class="msg" style="color:var(--out)">⚠ ${badRows} of ${S.fund.rows.length} rows in this file have a Close (or Open) outside their High–Low range — usually an adjusted Close sitting on unadjusted High/Low. The prices are used as given, not clamped: range-based estimators (Garman-Klass, Parkinson, Rogers-Satchell, Yang-Zhang) will read the range as wider than it really was, and Garman-Klass can turn negative and drop out. A CSV with both Close and Adj Close is scaled for you; if this warning appears, check the file's adjustment before trusting the range estimators.</p>` : '';
+
+    // ---- cones over the requested window set ----
+    const cones = wins.map(w2 => {
+      const s = volSeriesFor(S.fund, name, w2, tp);
+      const v = s.vals.filter(x => x != null && Number.isFinite(x));
+      if (!v.length) return null;
+      return { w: w2, n: v.length, min: Math.min(...v), max: Math.max(...v), lo: vQuantile(v, qlo), med: vQuantile(v, .5), hi: vQuantile(v, qhi), last: v[v.length - 1] };
+    }).filter(Boolean);
+    const coneChart = cones.length < 2 ? '<p class="msg">Add at least two window lengths to draw cones.</p>' : volConeChart(cones, qlo, qhi, fmt);
+    const coneTable = cones.length ? `<table><thead><tr><th>Window</th><th class="n">Min</th><th class="n">${Math.round(qlo * 100)}th</th><th class="n">Median</th><th class="n">${Math.round(qhi * 100)}th</th><th class="n">Max</th><th class="n">Realized</th><th class="n">Estimates</th></tr></thead><tbody>${cones.map(c => `<tr><td><b>${c.w}d</b></td><td class="n">${fmt(c.min)}</td><td class="n">${fmt(c.lo)}</td><td class="n">${fmt(c.med)}</td><td class="n">${fmt(c.hi)}</td><td class="n">${fmt(c.max)}</td><td class="n ${c.last >= c.med ? 'in' : 'out'}">${fmt(c.last)}</td><td class="n">${c.n}</td></tr>`).join('')}</tbody></table>` : '<p class="msg">No cones for these windows.</p>';
+
+    // ---- rolling views on the chosen window ----
+    const qLo = rollApply(main.vals, w, a => vQuantile(a, qlo)), qMed = rollApply(main.vals, w, a => vQuantile(a, .5)), qHi = rollApply(main.vals, w, a => vQuantile(a, qhi));
+    const rMax = rollApply(main.vals, w, a => Math.max(...a)), rMin = rollApply(main.vals, w, a => Math.min(...a));
+    const rMean = rollApply(main.vals, w, a => vMean(a)), rStd = rollApply(main.vals, w, a => vStd(a));
+    const rZ = main.vals.map((v, i) => v == null || rMean[i] == null || !(rStd[i] > 0) ? null : (v - rMean[i]) / rStd[i]);
+    const quantChart = volChart([
+      { name: Math.round(qhi * 100) + 'th percentile', vals: qHi, color: PAL[1], dash: '4 3' },
+      { name: 'Median', vals: qMed, color: PAL[8] },
+      { name: Math.round(qlo * 100) + 'th percentile', vals: qLo, color: PAL[1], dash: '4 3' },
+      { name: name === 'Raw' ? 'Close-to-close' : volLabelOf(name), vals: main.vals, color: PAL[0], bold: true }
+    ], dates, { fmt, aria: 'Rolling quantiles of volatility' });
+    const extremeChart = volChart([
+      { name: 'Rolling max', vals: rMax, color: PAL[9] },
+      { name: 'Rolling min', vals: rMin, color: PAL[2] },
+      { name: name === 'Raw' ? 'Close-to-close' : volLabelOf(name), vals: main.vals, color: PAL[0], bold: true }
+    ], dates, { fmt, aria: 'Rolling extremes of volatility' });
+    const descChart = volChart([
+      { name: 'Rolling mean', vals: rMean, color: PAL[0] },
+      { name: 'Rolling std. dev.', vals: rStd, color: PAL[4] },
+      { name: name === 'Raw' ? 'Close-to-close' : volLabelOf(name), vals: main.vals, color: PAL[8], bold: true }
+    ], dates, { fmt, aria: 'Rolling mean and standard deviation' });
+    const zChart = volChart([{ name: 'Z-score', vals: rZ, color: PAL[6] }], dates, { fmt: v => Number(v).toFixed(2), baseline: 0, h: 90, aria: 'Rolling z-score' });
+
+    // ---- benchmark side ----
+    let benchHtml = '';
+    if (S.bench && S.bench.rows.length) {
+      const bSeries = volSeriesFor(S.bench, name, w, tp);
+      const al = volAlign(main.dates, main.vals, bSeries.dates, bSeries.vals);
+      if (al.dates.length >= Math.max(w, 20)) {
+        const ratio = al.a.map((v, i) => al.b[i] > 0 ? v / al.b[i] : null);
+        const rc = new Array(al.a.length).fill(null);
+        for (let i = w - 1; i < rc.length; i++) rc[i] = pearson(al.a.slice(i - w + 1, i + 1), al.b.slice(i - w + 1, i + 1));
+        const reg = olsNoIntercept(al.b, al.a), corr = pearson(al.a, al.b);
+        const ratioLast = ratio.filter(x => x != null && Number.isFinite(x)).slice(-1)[0];
+        const rcLast = rc.filter(x => x != null && Number.isFinite(x)).slice(-1)[0];
+        benchHtml = card(esc(t) + ' vs ' + esc(S.bench.ticker), 'same estimator, same window · ' + al.dates.length + ' shared sessions · ' + (bSeries.from === 'python' ? 'Python snapshot' : 'browser') + ' benchmark series',
+          `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px">
+            ${tile('Fund volatility', fmt(st.last))}${tile('Benchmark volatility', fmt(volStats(bSeries.vals) ? volStats(bSeries.vals).last : null))}
+            ${tile('Ratio fund / bench', ratioLast == null ? '—' : ratioLast.toFixed(2), ratioLast >= 1 ? 'out' : 'in')}
+            ${tile('Correlation of levels', Number.isFinite(corr) ? corr.toFixed(2) : '—')}
+            ${tile('Rolling correlation (latest)', Number.isFinite(rcLast) ? rcLast.toFixed(2) : '—')}
+          </div>
+          <div class="grid2"><div><div class="overlap-label">Estimator levels</div>${volChart([
+            { name: S.fund.ticker, vals: al.a, color: PAL[0], bold: true },
+            { name: S.bench.ticker, vals: al.b, color: PAL[2] }
+          ], al.dates, { fmt, h: 140, aria: 'Fund and benchmark volatility' })}</div>
+          <div><div class="overlap-label">Ratio (fund ÷ benchmark)</div>${volChart([{ name: 'Ratio', vals: ratio, color: PAL[4], bold: true }], al.dates, { fmt: v => Number(v).toFixed(2), baseline: 1, h: 140, aria: 'Volatility ratio' })}</div></div>
+          <div style="margin-top:12px"><div class="overlap-label">Rolling correlation of the two volatility series</div>${volChart([{ name: 'Correlation', vals: rc, color: PAL[6] }], al.dates, { fmt: v => Number(v).toFixed(2), baseline: 0, h: 110, aria: 'Rolling correlation of volatility series' })}</div>
+          <div style="margin-top:12px"><table><thead><tr><th>OLS: fund = β × benchmark</th><th class="n">Estimate</th></tr></thead><tbody>
+            <tr><td>β (no intercept, as in volest)</td><td class="n"><b>${reg ? reg.beta.toFixed(3) : '—'}</b></td></tr>
+            <tr><td>Std. error of β</td><td class="n">${reg && Number.isFinite(reg.se) ? reg.se.toFixed(3) : '—'}</td></tr>
+            <tr><td>t-statistic</td><td class="n">${reg && Number.isFinite(reg.t) ? reg.t.toFixed(2) : '—'}</td></tr>
+            <tr><td>R² (uncentred)</td><td class="n">${reg && Number.isFinite(reg.r2) ? reg.r2.toFixed(3) : '—'}</td></tr>
+            <tr><td>Observations</td><td class="n">${reg ? reg.n : '—'}</td></tr></tbody></table>
+            <p class="msg">Regression through the origin, matching <code>volest.benchmark_regression</code> (<code>sm.OLS(y, X)</code> with no constant): β above 1 means the fund's volatility runs hotter than the benchmark's.</p></div>`);
+      } else {
+        benchHtml = card(esc(t) + ' vs ' + esc(S.bench.ticker), 'benchmark selected', '<p class="msg">Only ' + al.dates.length + ' sessions line up between the two files — the benchmark comparison needs at least ' + Math.max(w, 20) + ' shared dates. Check that both CSVs cover the same period.</p>');
+      }
+    }
+
+    out.innerHTML = partial + inconsistent +
+      `<div class="row" style="margin:4px 0 12px"><button id="volCsv">Download estimator series (CSV)</button><span class="msg">${esc(t)} · ${esc(dates[0])} → ${esc(dates[dates.length - 1])} · ${st.n} estimates · ${tp} sessions/yr · ${from}${S.fund.rows.adjusted ? ' · Adj Close applied to O/H/L' : ''}</span></div>
+       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px">
+        ${tile('Latest ' + esc(volLabelOf(name)), fmt(st.last))}
+        ${tile('Percentile of history', (st.pct * 100).toFixed(0) + '%', st.pct >= 0.8 ? 'out' : st.pct <= 0.2 ? 'in' : '')}
+        ${tile('Median', fmt(st.median))}${tile('Min / max', fmt(st.min) + ' / ' + fmt(st.max))}
+        ${tile('Mean ± std. dev.', fmt(st.mean) + ' ± ' + fmt(st.sd))}
+       </div>` +
+      card(esc(volLabelOf(name)) + ' over time', esc(t) + ' · ' + w + '-session window · daily bars', volChart([{ name: volLabelOf(name), vals: main.vals, color: PAL[0], bold: true }], dates, { fmt, h: 170, aria: 'Estimator time series' })) +
+      card('Volatility cones', esc(t) + ' · windows ' + wins.join(', ') + ' sessions · quantiles ' + Math.round(qlo * 100) + '/' + Math.round(qhi * 100) + '%', coneChart + coneTable + '<p class="msg">A cone answers "is this volatility high for this fund?" — the realized line against the same fund\'s own history at each horizon. It is not a forecast.</p>') +
+      card('Rolling quantiles', w + '-session rolling window · quantiles ' + Math.round(qlo * 100) + '/' + Math.round(qhi * 100) + '%', quantChart) +
+      card('Rolling extremes', w + '-session rolling window', extremeChart) +
+      card('Rolling mean, standard deviation and z-score', w + '-session rolling window', descChart + '<div style="margin-top:10px">' + zChart + '</div>') +
+      card('Distribution', esc(volLabelOf(name)) + ' · all estimates', volHistogram(main.vals, name)) +
+      benchHtml +
+      (name === 'HodgesTompkins' ? '<p class="msg" style="color:var(--mv)">⚠ Hodges-Tompkins as published by <code>volatility-trading</code> computes its finite-sample correction from <code>log_return.count()</code> once for the whole series, not per window — so this chart is raw rolling volatility × one constant. The browser port reproduces that exactly so it can be checked against the library; a rolling correction would give different (usually higher) early values.</p>' : '');
+
+    const btn = $('volCsv');
+    if (btn) btn.onclick = () => {
+      const bm = S.bench ? new Map(volSeriesFor(S.bench, name, w, tp).dates.map((d, i) => [d, volSeriesFor(S.bench, name, w, tp).vals[i]])) : null;
+      const rows = ['date,' + name + (bm ? ',bench_' + name : '')];
+      main.dates.forEach((d, i) => { if (main.vals[i] == null) return; const b = bm ? bm.get(d) : null; rows.push([d, (+main.vals[i]).toFixed(6), b == null || b === null ? '' : (+b).toFixed(6)].join(',')); });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' }));
+      a.download = 'volatility_' + t + '_' + name + '_' + w + '.csv'; a.click();
+    };
+  }
+
   // ---------- bind buttons (errors are shown, never swallowed) ----------
   const safe = (fn, outId) => async () => { try { await fn(); } catch (e) { $(outId).innerHTML = `<p class="err">Error: ${esc(e && e.message || e)}</p>`; } };
+  let volTried = false;
   $('flowRun').onclick = safe(runFlows, 'flowOut');
   $('ovRun').onclick = safe(runOverlap, 'ovOut');
   $('secRun').onclick = safe(runSectors, 'secOut');
   $('corrRun').onclick = safe(runCorr, 'corrOut');
   $('chgRun').onclick = safe(runChange, 'chgOut');
   $('fbRun').onclick = safe(runFunds, 'fbOut');
+  $('volRun').onclick = safe(loadVol, 'volOut');
+  $('volDemo').onclick = safe(loadVolDemo, 'volOut');
+  $('volFundCsv').onchange = () => { $('volSnap').value = ''; };
+  $('volBenchCsv').onchange = () => { $('volSnap').value = ''; };
+  $('volSnap').onchange = () => { $('volFundCsv').value = ''; $('volBenchCsv').value = ''; };
+  ['volEstimator', 'volWindow', 'volWindows', 'volQLo', 'volQHi'].forEach(id => {
+    const el = $(id); if (el) el.onchange = () => { if (volState.fund) renderVol(); };
+  });
   $('fbSearch').oninput = () => { if (fbState.items.length) renderFunds(); };
   $('fbSearch').onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); };
   $('fbSort').onchange = () => { if (fbState.items.length) renderFunds(); };
   document.querySelectorAll('[data-goto]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); showTab(a.dataset.goto); }));
   // auto-load the default issuer the first time the Fund Browser tab is opened
   document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => { if (btn.dataset.tab === 'funds' && !fbState.items.length && !fbState.tried) { fbState.tried = true; runFunds().catch(e => { $('fbOut').innerHTML = '<p class="err">Error: ' + esc(e && e.message || e) + '</p>'; }); } });
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab === 'funds' && !fbState.items.length && !fbState.tried) { fbState.tried = true; runFunds().catch(e => { $('fbOut').innerHTML = '<p class="err">Error: ' + esc(e && e.message || e) + '</p>'; }); }
+      if (btn.dataset.tab === 'vol' && !volState.fund && !volTried) { volTried = true; loadVolDemo(true); }
+    });
   });
+  // deep link: #tab-vol (or #vol) opens that tab on load
+  const startTab = String(location.hash || '').replace(/^#/, '').replace(/^tab-/, '');
+  if (startTab && document.querySelector('.tab[data-tab="' + startTab + '"]')) showTab(startTab);
 })();
 </script>
 </body>
